@@ -96,7 +96,7 @@ class SyncVectorBalletEnv():
       dones.append(timestep[2])
       infos.append({})
     obs_image = np.stack(obs_image, axis=0)
-    obs_language = np.stack(obs_language, axis=0).astype(np.uint8)
+    obs_language = np.stack(obs_language, axis=0).astype(np.float32)
     return [obs_image, obs_language], rewards, dones, infos
 
 class BalletEnv(gym.Wrapper):
@@ -123,8 +123,10 @@ class BalletEnv(gym.Wrapper):
     def step(self, action):
         timestep = self.env.step(action)
         obs = timestep.observation
-        language_one_hot = self.language_dict[str(obs[1])]
-        obs = (np.transpose(obs[0], (-1, 0, 1)), language_one_hot)
+        one_hot = self.language_dict[str(obs[1])]
+        language_one_hot_vector = np.zeros(14)
+        language_one_hot_vector[one_hot] = 1
+        obs = (np.transpose(obs[0], (-1, 0, 1)), language_one_hot_vector)
         reward = timestep.reward
         done = timestep.last()
         return obs, reward, done, {}
