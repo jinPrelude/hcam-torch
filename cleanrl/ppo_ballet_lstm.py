@@ -165,6 +165,13 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+def lstm_init(lstm):
+    for name, param in lstm.named_parameters():
+            if "bias" in name:
+                nn.init.constant_(param, 0)
+            elif "weight" in name:
+                nn.init.orthogonal_(param, 1.0)
+    return lstm
 
 class Agent(nn.Module):
     def __init__(self, envs):
@@ -181,11 +188,7 @@ class Agent(nn.Module):
             nn.ReLU(),
         )
         self.lstm = nn.LSTM(512, 128)
-        for name, param in self.lstm.named_parameters():
-            if "bias" in name:
-                nn.init.constant_(param, 0)
-            elif "weight" in name:
-                nn.init.orthogonal_(param, 1.0)
+        self.lstm = lstm_init(self.lstm)
         self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(128, 1), std=1)
 
