@@ -10,20 +10,39 @@ class SyncVectorBalletEnv():
     self.num_envs = len(envs)
 
   def reset(self):
-    return [env.reset() for env in self.envs]
+    obs = [env.reset() for env in self.envs]
+    obs_image = np.stack([o[0] for o in obs], axis=0)
+    obs_language = np.stack([o[1] for o in obs], axis=0).astype(np.float32)
+    return (obs_image, obs_language)
 
   def step(self, actions):
-    obs_image, obs_language, rewards, dones, infos = [], [], [], [], []
+    obs_images, obs_languages, rewards, dones, infos = [], [], [], [], []
     for i, env in enumerate(self.envs):
-      timestep = env.step(actions[i])
-      obs_image.append(timestep[0][0])
-      obs_language.append(timestep[0][1])
-      rewards.append(timestep[1])
-      dones.append(timestep[2])
-      infos.append({})
-    obs_image = np.stack(obs_image, axis=0)
-    obs_language = np.stack(obs_language, axis=0).astype(np.float32)
-    return [obs_image, obs_language], rewards, dones, infos
+        timestep = env.step(actions[i])
+        obs_image = timestep[0][0]
+        obs_language = timestep[0][1]
+        reward = timestep[1]
+        done = timestep[2]
+        
+        self.episode_returns[i] += timestep[1]
+        self.episode_lengths[i] += 1
+        if done:
+            infos.append({"episode": {"r": self.episode_returns[i], "l": self.episode_lengths[i]}})
+            self.episode_returns[i] = 0.0
+            self.episode_lengths[i] = 0
+            (obs_image, obs_language) = env.reset()
+        else:
+            infos.append({})
+
+        obs_images.append(obs_image)
+        obs_languages.append(obs_language)
+        rewards.append(reward)
+        dones.append(done)
+
+    obs_images = np.stack(obs_images, axis=0)
+    obs_languages = np.stack(obs_languages, axis=0).astype(np.float32)
+
+    return [obs_images, obs_languages], rewards, dones, infos
 
 class BalletEnv(gym.Wrapper):
     def __init__(self, env):
@@ -45,7 +64,16 @@ class BalletEnv(gym.Wrapper):
             "chevron_down": 12,
             "chevron_up": 13
         }
-    
+
+    def reset(self):
+        timestep = self.env.reset()
+        obs = timestep.observation
+        one_hot = self.language_dict[str(obs[1])]
+        language_one_hot_vector = np.zeros(14)
+        language_one_hot_vector[one_hot] = 1
+        obs = (np.transpose(obs[0], (-1, 0, 1)), language_one_hot_vector)
+        return obs
+
     def step(self, action):
         timestep = self.env.step(action)
         obs = timestep.observation
