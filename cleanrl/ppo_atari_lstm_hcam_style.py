@@ -3,10 +3,8 @@ import argparse
 import os
 import random
 import time
-from collections import deque
 from distutils.util import strtobool
 
-import envpool
 import gym
 import numpy as np
 import torch
@@ -15,6 +13,13 @@ import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
+from stable_baselines3.common.atari_wrappers import (  # isort:skip
+    ClipRewardEnv,
+    EpisodicLifeEnv,
+    FireResetEnv,
+    MaxAndSkipEnv,
+    NoopResetEnv,
+)
 
 
 def parse_args():
@@ -38,7 +43,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="Pong-v5",
+    parser.add_argument("--env-id", type=str, default="BreakoutNoFrameskip-v4",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=10000000,
         help="total timesteps of the experiments")
@@ -79,38 +84,28 @@ def parse_args():
     return args
 
 
-class RecordEpisodeStatistics(gym.Wrapper):
-    def __init__(self, env, deque_size=100):
-        super().__init__(env)
-        self.num_envs = getattr(env, "num_envs", 1)
-        self.episode_returns = None
-        self.episode_lengths = None
+def make_env(env_id, seed, idx, capture_video, run_name):
+    def thunk():
+        env = gym.make(env_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        env = NoopResetEnv(env, noop_max=30)
+        env = MaxAndSkipEnv(env, skip=4)
+        env = EpisodicLifeEnv(env)
+        if "FIRE" in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+        env = ClipRewardEnv(env)
+        env = gym.wrappers.ResizeObservation(env, (84, 84))
+        env = gym.wrappers.GrayScaleObservation(env)
+        env = gym.wrappers.FrameStack(env, 1)
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
 
-    def reset(self, **kwargs):
-        observations = super().reset(**kwargs)
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
-        self.lives = np.zeros(self.num_envs, dtype=np.int32)
-        self.returned_episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.returned_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
-        return observations
-
-    def step(self, action):
-        observations, rewards, dones, infos = super().step(action)
-        self.episode_returns += infos["reward"]
-        self.episode_lengths += 1
-        self.returned_episode_returns[:] = self.episode_returns
-        self.returned_episode_lengths[:] = self.episode_lengths
-        self.episode_returns *= 1 - infos["terminated"]
-        self.episode_lengths *= 1 - infos["terminated"]
-        infos["r"] = self.returned_episode_returns
-        infos["l"] = self.returned_episode_lengths
-        return (
-            observations,
-            rewards,
-            dones,
-            infos,
-        )
+    return thunk
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -129,7 +124,8 @@ def lstm_init(lstm):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        self.network = nn.Sequential(
+        # Encoder block
+        self.img_encoder = nn.Sequential(
             layer_init(nn.Conv2d(1, 32, 8, stride=4)),
             nn.ReLU(),
             layer_init(nn.Conv2d(32, 64, 4, stride=2)),
@@ -137,46 +133,98 @@ class Agent(nn.Module):
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 512)),
+            layer_init(nn.Linear(64 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lstm = nn.LSTM(512, 128)
-        self.lstm = lstm_init(self.lstm)
-        
-        self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(128, 1), std=1)
+        # self.lang_encoder_lstm = nn.LSTM(14, 256)
+        # self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
+        # self.lang_embedding = nn.Sequential(
+        #     layer_init(nn.Linear(256, 32)),
+        #     nn.ReLU(),
+        # )
+        # Memory block
+        self.memory_lstm = nn.LSTM(256, 512, 4)
+        self.memory_lstm = lstm_init(self.memory_lstm)
 
-    def get_states(self, x, lstm_state, done):
-        hidden = self.network(x / 255.0)
+        # Decoder block
+        self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(512, 1), std=1)
+        # self.img_decoder_fc = nn.Sequential(
+        #     layer_init(nn.Linear(512, 256)),
+        #     nn.ReLU(),
+        # )
+        # self.img_decoder = nn.Sequential(
+        #     layer_init(nn.Linear(256, 32 * 7 * 7)),
+        #     nn.ReLU(),
+        #     nn.Unflatten(1, (32, 7, 7)),
+        #     layer_init(nn.ConvTranspose2d(32, 32, 3, stride=1)),
+        #     nn.ReLU(),
+        #     layer_init(nn.ConvTranspose2d(32, 16, 3, stride=1)),
+        #     nn.ReLU(),
+        #     layer_init(nn.ConvTranspose2d(16, 3, 9, stride=9)),
+        #     nn.ReLU(),
+        # )
+        # self.lang_decoder_fc = nn.Sequential(
+        #     layer_init(nn.Linear(512, 256)),
+        #     nn.ReLU(),
+        # )
+        # self.lang_decoder_lstm = nn.LSTM(256, 14)
+        # self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
 
-        # LSTM logic
-        batch_size = lstm_state[0].shape[1]
-        hidden = hidden.reshape((-1, batch_size, self.lstm.input_size))
+    def get_states(self, x, lstm_state_dict, done):
+        # Encoder logic
+        img_hidden = self.img_encoder(x / 255.0)
+        # batch_size = lstm_state_dict["encoder"][0].shape[1]
+        # lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
+        # lang_hidden = []
+        # for h, d in zip(lang_input, done):
+        #     h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
+        #         h.unsqueeze(0),
+        #         (
+        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][0],
+        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][1],
+        #         ),
+        #     )
+        #     lang_hidden += [h]
+        # lang_hidden = torch.flatten(torch.cat(lang_hidden), 0, 1)
+        # lang_hidden = self.lang_embedding(lang_hidden)
+        # hidden = torch.cat([img_hidden, lang_hidden], 1)
+        hidden = img_hidden
+
+        # Memory logic
+        batch_size = lstm_state_dict["memory"][0].shape[1]
+        hidden = hidden.reshape((-1, batch_size, self.memory_lstm.input_size))
         done = done.reshape((-1, batch_size))
         new_hidden = []
         for h, d in zip(hidden, done):
-            h, lstm_state = self.lstm(
+            h, lstm_state_dict["memory"] = self.memory_lstm(
                 h.unsqueeze(0),
                 (
-                    (1.0 - d).view(1, -1, 1) * lstm_state[0],
-                    (1.0 - d).view(1, -1, 1) * lstm_state[1],
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][0],
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][1],
                 ),
             )
             new_hidden += [h]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
-        return new_hidden, lstm_state
+        return new_hidden, lstm_state_dict
 
-    def get_value(self, x, lstm_state, done):
-        hidden, _ = self.get_states(x, lstm_state, done)
+    def get_value(self, x, lstm_state_dict, done):
+        hidden, _ = self.get_states(x, lstm_state_dict, done)
         return self.critic(hidden)
 
-    def get_action_and_value(self, x, lstm_state, done, action=None):
-        hidden, lstm_state = self.get_states(x, lstm_state, done)
+    def get_action_and_value(self, x, lstm_state_dict, done, action=None):
+        # encoder and memory
+        hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
+        
+        # actor output
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(hidden), lstm_state
+
+        # critic output
+        value = self.critic(hidden)
+        return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
 if __name__ == "__main__":
@@ -209,20 +257,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = envpool.make(
-        args.env_id,
-        env_type="gym",
-        num_envs=args.num_envs,
-        episodic_life=True,
-        reward_clip=True,
-        seed=args.seed,
-        stack_num=1,
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
     )
-    envs.num_envs = args.num_envs
-    envs.single_action_space = envs.action_space
-    envs.single_observation_space = envs.observation_space
-    envs = RecordEpisodeStatistics(envs)
-    assert isinstance(envs.action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -234,21 +272,23 @@ if __name__ == "__main__":
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
-    avg_returns = deque(maxlen=20)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
     next_obs = torch.Tensor(envs.reset()).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    next_lstm_state = (
-        torch.zeros(agent.lstm.num_layers, args.num_envs, agent.lstm.hidden_size).to(device),
-        torch.zeros(agent.lstm.num_layers, args.num_envs, agent.lstm.hidden_size).to(device),
-    )  # hidden and cell states (see https://youtu.be/8HyCNIVRbSU)
+    next_lstm_state_dict = {}
+    next_lstm_state_dict["memory"] = (
+        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
+        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
+    )
     num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
-        initial_lstm_state = (next_lstm_state[0].clone(), next_lstm_state[1].clone())
+        initial_lstm_state_dict = {
+            "memory" : (next_lstm_state_dict["memory"][0].clone(), next_lstm_state_dict["memory"][1].clone())
+        }
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -262,7 +302,7 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, next_lstm_state = agent.get_action_and_value(next_obs, next_lstm_state, next_done)
+                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value(next_obs, next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -272,19 +312,18 @@ if __name__ == "__main__":
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
 
-            for idx, d in enumerate(done):
-                if d and info["lives"][idx] == 0:
-                    print(f"global_step={global_step}, episodic_return={info['r'][idx]}")
-                    avg_returns.append(info["r"][idx])
-                    writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
-                    writer.add_scalar("charts/episodic_return", info["r"][idx], global_step)
-                    writer.add_scalar("charts/episodic_length", info["l"][idx], global_step)
+            for item in info:
+                if "episode" in item.keys():
+                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
+                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
+                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
+                    break
 
         # bootstrap value if not done
         with torch.no_grad():
             next_value = agent.get_value(
                 next_obs,
-                next_lstm_state,
+                next_lstm_state_dict,
                 next_done,
             ).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
@@ -321,10 +360,12 @@ if __name__ == "__main__":
                 end = start + envsperbatch
                 mbenvinds = envinds[start:end]
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
-
+                lstm_state_dict_for_train = {
+                    "memory" : (initial_lstm_state_dict["memory"][0][:, mbenvinds], initial_lstm_state_dict["memory"][1][:, mbenvinds])
+                }
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
                     b_obs[mb_inds],
-                    (initial_lstm_state[0][:, mbenvinds], initial_lstm_state[1][:, mbenvinds]),
+                    lstm_state_dict_for_train,
                     b_dones[mb_inds],
                     b_actions.long()[mb_inds],
                 )
