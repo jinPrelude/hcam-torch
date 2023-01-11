@@ -40,7 +40,7 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="Pong-v5",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--total-timesteps", type=int, default=3000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4,
         help="the learning rate of the optimizer")
@@ -138,7 +138,7 @@ class Agent(nn.Module):
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 256)),
+            layer_init(nn.Linear(64 * 7 * 7, 512)),
             nn.ReLU(),
         )
         # self.lang_encoder_lstm = nn.LSTM(14, 256)
@@ -148,12 +148,12 @@ class Agent(nn.Module):
         #     nn.ReLU(),
         # )
         # Memory block
-        self.memory_lstm = nn.LSTM(256, 512, 4)
+        self.memory_lstm = nn.LSTM(512, 128, 1)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
+        self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(128, 1), std=1)
         # self.img_decoder_fc = nn.Sequential(
         #     layer_init(nn.Linear(512, 256)),
         #     nn.ReLU(),
