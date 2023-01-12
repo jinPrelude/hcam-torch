@@ -140,7 +140,7 @@ class Agent(nn.Module):
             layer_init(nn.Linear(64 * 7 * 7, 512)),
             nn.ReLU(),
         )
-        self.lstm = nn.LSTM(512, 128)
+        self.lstm = nn.LSTM(512, 128, 2)
         self.lstm = lstm_init(self.lstm)
         
         self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
