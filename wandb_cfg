@@ -8,6 +8,10 @@ parameters:
     distribution: log_uniform_values
     min: 0.0003
     max: 0.003
+  num-minibatches:
+    values: [1, 2, 4]
+  update-epochs:
+    values: [1, 2, 4, 8]
   vf-coef:
     distribution: uniform
     min: 0
@@ -18,3 +22,11 @@ parameters:
     distribution: uniform
     min: 0
     max: 5
+  num-envs:
+    value: 24
+  total-timesteps:
+    value: 3000000
+  early_terminate:
+    type: hyperband
+    max_iter: 1500
+    s: 2
