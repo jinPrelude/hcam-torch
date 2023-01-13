@@ -299,7 +299,7 @@ if __name__ == "__main__":
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
     )
-    num_updates = 10000000 // args.batch_size
+    num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
         initial_lstm_state_dict = {
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         }
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
-            frac = 1.0 - (update - 1.0) / num_updates
+            frac = 1.0 - (update - 1.0) / (10000000 // args.batch_size)
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
 
