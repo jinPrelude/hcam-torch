@@ -1,0 +1,20 @@
+program: cleanrl/ppo_atari_envpool_lstm_hcam_style.py
+method: bayes
+metric: 
+  name: charts/episodic_return
+  goal: maximize
+parameters:
+  learning-rate:
+    distribution: log_uniform_values
+    min: 0.0003
+    max: 0.003
+  vf-coef:
+    distribution: uniform
+    min: 0
+    max: 5
+  clip-coef:
+    values: [0.1, 0.2, 0.3]
+  max-grad-norm:
+    distribution: uniform
+    min: 0
+    max: 5
