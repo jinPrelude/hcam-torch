@@ -1,7 +1,7 @@
 program: cleanrl/ppo_atari_envpool_lstm_hcam_style.py
 method: bayes
 metric: 
-  name: charts/episodic_return
+  name: charts/avg_episodic_return
   goal: maximize
 parameters:
   learning-rate:
@@ -25,8 +25,7 @@ parameters:
   num-envs:
     value: 24
   total-timesteps:
-    value: 3000000
+    value: 4000000
 early_terminate:
   type: hyperband
-  max_iter: 1500
-  s: 2
+  min_iter: 3000
