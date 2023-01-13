@@ -26,7 +26,7 @@ parameters:
     value: 24
   total-timesteps:
     value: 3000000
-  early_terminate:
-    type: hyperband
-    max_iter: 1500
-    s: 2
+early_terminate:
+  type: hyperband
+  max_iter: 1500
+  s: 2
