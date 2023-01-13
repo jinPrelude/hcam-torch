@@ -299,7 +299,7 @@ if __name__ == "__main__":
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
     )
-    num_updates = args.total_timesteps // args.batch_size
+    num_updates = 10000000 // args.batch_size
 
     for update in range(1, num_updates + 1):
         initial_lstm_state_dict = {
