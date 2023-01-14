@@ -28,6 +28,10 @@ parameters:
     value: 3000000
   num-lstm-layers:
     value: 2
+  lstm-hidden-size:
+    value: 256
+  track:
+    value: True
 early_terminate:
   type: hyperband
   min_iter: 1500

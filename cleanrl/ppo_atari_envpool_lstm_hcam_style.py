@@ -56,6 +56,8 @@ def parse_args():
         help="the lambda for the general advantage estimation")
     parser.add_argument("--num-lstm-layers", type=int, default=3,
         help="the number of layers(stack) of lstm")
+    parser.add_argument("--lstm-hidden-size", type=int, default=128,
+        help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=8,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
@@ -150,12 +152,12 @@ class Agent(nn.Module):
         #     nn.ReLU(),
         # )
         # Memory block
-        self.memory_lstm = nn.LSTM(512, 128, args.num_lstm_layers)
+        self.memory_lstm = nn.LSTM(512, args.lstm_hidden_size, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(128, 1), std=1)
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
         # self.img_decoder_fc = nn.Sequential(
         #     layer_init(nn.Linear(512, 256)),
         #     nn.ReLU(),
