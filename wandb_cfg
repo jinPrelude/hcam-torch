@@ -27,7 +27,7 @@ parameters:
   total-timesteps:
     value: 2000000
   num-lstm-layers:
-    value: 4
+    value: 3
   lstm-hidden-size:
     values: [256, 512, 1024]
   track:
