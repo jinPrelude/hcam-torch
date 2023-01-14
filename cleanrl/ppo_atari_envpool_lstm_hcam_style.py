@@ -54,6 +54,8 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
+    parser.add_argument("--num-lstm-layers", type=int, default=3,
+        help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=8,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
@@ -148,7 +150,7 @@ class Agent(nn.Module):
         #     nn.ReLU(),
         # )
         # Memory block
-        self.memory_lstm = nn.LSTM(512, 128, 4)
+        self.memory_lstm = nn.LSTM(512, 128, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
