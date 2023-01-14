@@ -126,11 +126,11 @@ class Agent(nn.Module):
         super().__init__()
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)),
+            layer_init(nn.Conv2d(1, 32, 8, stride=4)), # [N, 1, 84, 84] -> [N, 32, 20, 20]
             nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+            layer_init(nn.Conv2d(32, 64, 4, stride=2)), # [N, 32, 20, 20] -> [N, 64, 9, 9]
             nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+            layer_init(nn.Conv2d(64, 64, 3, stride=1)), # [N, 64, 9, 9] -> [N, 64, 7, 7]
             nn.ReLU(),
             nn.Flatten(),
             layer_init(nn.Linear(64 * 7 * 7, 256)),
@@ -149,21 +149,21 @@ class Agent(nn.Module):
         # Decoder block
         self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(512, 1), std=1)
-        # self.img_decoder_fc = nn.Sequential(
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        # )
-        # self.img_decoder = nn.Sequential(
-        #     layer_init(nn.Linear(256, 32 * 7 * 7)),
-        #     nn.ReLU(),
-        #     nn.Unflatten(1, (32, 7, 7)),
-        #     layer_init(nn.ConvTranspose2d(32, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(32, 16, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(16, 3, 9, stride=9)),
-        #     nn.ReLU(),
-        # )
+        self.img_decoder_fc = nn.Sequential(
+            layer_init(nn.Linear(512, 256)),
+            nn.ReLU(),
+        )
+        self.img_decoder = nn.Sequential(
+            layer_init(nn.Linear(256, 64 * 7 * 7)),
+            nn.ReLU(),
+            nn.Unflatten(1, (64, 7, 7)),
+            layer_init(nn.ConvTranspose2d(64, 64, 3, stride=1)), # [N, 64, 7, 7] -> [N, 64, 9, 9]
+            nn.ReLU(),
+            layer_init(nn.ConvTranspose2d(64, 32, 4, stride=2)), # [N, 64, 9, 9] -> [N, 32, 20, 20]
+            nn.ReLU(),
+            layer_init(nn.ConvTranspose2d(32, 1, 8, stride=4)), # [N, 32, 20, 20] -> [N, 1, 84, 84]
+            nn.ReLU(),
+        )
         # self.lang_decoder_fc = nn.Sequential(
         #     layer_init(nn.Linear(512, 256)),
         #     nn.ReLU(),
@@ -224,7 +224,12 @@ class Agent(nn.Module):
 
         # critic output
         value = self.critic(hidden)
-        return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
+
+        # decoder for reconstruction loss
+        input_reconstruction = self.img_decoder_fc(hidden)
+        input_reconstruction = self.img_decoder(input_reconstruction)
+
+        return action, probs.log_prob(action), probs.entropy(), value, input_reconstruction, lstm_state_dict
 
 
 if __name__ == "__main__":
@@ -302,7 +307,7 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value(next_obs, next_lstm_state_dict, next_done)
+                action, logprob, _, value, input_reconstruction, next_lstm_state_dict = agent.get_action_and_value(next_obs, next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -363,7 +368,7 @@ if __name__ == "__main__":
                 lstm_state_dict_for_train = {
                     "memory" : (initial_lstm_state_dict["memory"][0][:, mbenvinds], initial_lstm_state_dict["memory"][1][:, mbenvinds])
                 }
-                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
+                _, newlogprob, entropy, newvalue, input_reconstruction, _ = agent.get_action_and_value(
                     b_obs[mb_inds],
                     lstm_state_dict_for_train,
                     b_dones[mb_inds],
