@@ -25,11 +25,11 @@ parameters:
   num-envs:
     value: 24
   total-timesteps:
-    value: 3000000
+    value: 2000000
   num-lstm-layers:
     value: 4
   lstm-hidden-size:
-    values: [256, 512]
+    values: [256, 512, 1024]
   track:
     value: True
 early_terminate:
