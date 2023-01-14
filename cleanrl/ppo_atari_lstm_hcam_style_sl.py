@@ -269,6 +269,8 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+    # reconstruction_loss = nn.CrossEntropyLoss()
+    reconstruction_loss = nn.MSELoss()
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
@@ -407,9 +409,14 @@ if __name__ == "__main__":
                 else:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
-                entropy_loss = entropy.mean()
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+                # Reconstruction loss
+                r_loss = reconstruction_loss(input_reconstruction, b_obs[mb_inds])
 
+                entropy_loss = entropy.mean()
+                # loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+                loss = r_loss
+                print(loss.item())
+                
                 optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
