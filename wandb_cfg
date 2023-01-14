@@ -4,18 +4,10 @@ metric:
   name: charts/avg_episodic_return
   goal: maximize
 parameters:
-  learning-rate:
-    distribution: log_uniform_values
-    min: 0.0002
-    max: 0.002
   num-minibatches:
     values: [1, 2, 4]
   update-epochs:
     values: [1, 2, 4, 8]
-  vf-coef:
-    distribution: uniform
-    min: 0
-    max: 5
   clip-coef:
     values: [0.1, 0.2, 0.3]
   max-grad-norm:
@@ -28,10 +20,5 @@ parameters:
     value: 2000000
   num-lstm-layers:
     value: 3
-  lstm-hidden-size:
-    values: [256, 512, 1024]
   track:
     value: True
-early_terminate:
-  type: hyperband
-  min_iter: 1500
