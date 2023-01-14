@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for pycolab_ballet.ballet_environment_wrapper."""
+"""Tests for ballet_env.ballet_environment_wrapper."""
 from absl.testing import absltest
 from absl.testing import parameterized
 
 import numpy as np
 
-from cleanrl.pycolab_ballet import ballet_environment
-from cleanrl.pycolab_ballet import ballet_environment_core
+from cleanrl.ballet_env import ballet_environment
+from cleanrl.ballet_env import ballet_environment_core
 
 
 class BalletEnvironmentTest(parameterized.TestCase):
