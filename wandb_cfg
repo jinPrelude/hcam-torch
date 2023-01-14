@@ -6,8 +6,8 @@ metric:
 parameters:
   learning-rate:
     distribution: log_uniform_values
-    min: 0.0003
-    max: 0.003
+    min: 0.0002
+    max: 0.002
   num-minibatches:
     values: [1, 2, 4]
   update-epochs:
@@ -27,9 +27,9 @@ parameters:
   total-timesteps:
     value: 3000000
   num-lstm-layers:
-    value: 2
+    value: 4
   lstm-hidden-size:
-    value: 256
+    values: [256, 512]
   track:
     value: True
 early_terminate:
