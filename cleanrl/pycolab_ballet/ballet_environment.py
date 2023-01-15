@@ -36,7 +36,7 @@ import dm_env
 import numpy as np
 from pycolab import cropping
 
-from cleanrl.ballet_env import ballet_environment_core as ballet_core
+from cleanrl.pycolab_ballet import ballet_environment_core as ballet_core
 
 FLAGS = flags.FLAGS
 

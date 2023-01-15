@@ -1,5 +1,5 @@
-from cleanrl.ballet_env import ballet_environment
-from cleanrl.ballet_env.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
+from cleanrl.pycolab_ballet import ballet_environment
+from cleanrl.pycolab_ballet.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
 
 import argparse
 import os

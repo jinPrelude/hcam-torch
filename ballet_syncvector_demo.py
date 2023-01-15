@@ -1,4 +1,4 @@
-from cleanrl.ballet_env import ballet_environment
+from cleanrl.pycolab_ballet import ballet_environment
 
 import gym
 import numpy as np
