@@ -56,9 +56,9 @@ def parse_args():
         help="the lambda for the general advantage estimation")
     parser.add_argument("--num-lstm-layers", type=int, default=3,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--lstm-hidden-size", type=int, default=128,
+    parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--num-minibatches", type=int, default=8,
+    parser.add_argument("--num-minibatches", type=int, default=16,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
         help="the K epochs to update the policy")
