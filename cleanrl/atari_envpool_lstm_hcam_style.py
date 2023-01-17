@@ -135,70 +135,27 @@ class Agent(nn.Module):
         super().__init__()
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)),
+            layer_init(nn.Conv2d(1, 16, 9, stride=9)),
             nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+            layer_init(nn.Conv2d(16, 32, 3, stride=1)),
             nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+            layer_init(nn.Conv2d(32, 32, 3, stride=1)),
             nn.ReLU(),
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 512)),
+            layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        # self.lang_encoder_lstm = nn.LSTM(14, 256)
-        # self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
-        # self.lang_embedding = nn.Sequential(
-        #     layer_init(nn.Linear(256, 32)),
-        #     nn.ReLU(),
-        # )
         # Memory block
-        self.memory_lstm = nn.LSTM(512, args.lstm_hidden_size, args.num_lstm_layers)
+        self.memory_lstm = nn.LSTM(256, args.lstm_hidden_size, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
         self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
-        # self.img_decoder_fc = nn.Sequential(
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        # )
-        # self.img_decoder = nn.Sequential(
-        #     layer_init(nn.Linear(256, 32 * 7 * 7)),
-        #     nn.ReLU(),
-        #     nn.Unflatten(1, (32, 7, 7)),
-        #     layer_init(nn.ConvTranspose2d(32, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(32, 16, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(16, 3, 9, stride=9)),
-        #     nn.ReLU(),
-        # )
-        # self.lang_decoder_fc = nn.Sequential(
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        # )
-        # self.lang_decoder_lstm = nn.LSTM(256, 14)
-        # self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
 
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        img_hidden = self.img_encoder(x / 255.0)
-        # batch_size = lstm_state_dict["encoder"][0].shape[1]
-        # lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
-        # lang_hidden = []
-        # for h, d in zip(lang_input, done):
-        #     h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
-        #         h.unsqueeze(0),
-        #         (
-        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][0],
-        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][1],
-        #         ),
-        #     )
-        #     lang_hidden += [h]
-        # lang_hidden = torch.flatten(torch.cat(lang_hidden), 0, 1)
-        # lang_hidden = self.lang_embedding(lang_hidden)
-        # hidden = torch.cat([img_hidden, lang_hidden], 1)
-        hidden = img_hidden
+        hidden = self.img_encoder(x / 255.0)
 
         # Memory logic
         batch_size = lstm_state_dict["memory"][0].shape[1]
@@ -274,6 +231,8 @@ if __name__ == "__main__":
         reward_clip=True,
         seed=args.seed,
         stack_num=1,
+        img_height=99,
+        img_width=99,
     )
     envs.num_envs = args.num_envs
     envs.single_action_space = envs.action_space
@@ -311,7 +270,7 @@ if __name__ == "__main__":
         }
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
-            frac = 1.0 - (update - 1.0) / (10000000 // args.batch_size)
+            frac = 1.0 - (update - 1.0) / num_updates
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
 
