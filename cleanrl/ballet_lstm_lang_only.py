@@ -46,18 +46,20 @@ def parse_args():
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=192,
+    parser.add_argument("--num-envs", type=int, default=64,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=128,
         help="the number of steps to run in each environment per policy rollout")
-    parser.add_argument("--num-lstm-layer", type=int, default=4,
-        help="the number of mini-batches")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument("--gamma", type=float, default=0.99,
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
+    parser.add_argument("--num-lstm-layers", type=int, default=3,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--lstm-hidden-size", type=int, default=512,
+        help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=32,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
@@ -118,12 +120,12 @@ class Agent(nn.Module):
             nn.ReLU(),
         )
         # Memory block
-        self.memory_lstm = nn.LSTM(256+32, 512, args.num_lstm_layer)
+        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(512, 8), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, 8), std=0.01)
+        self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
         
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
@@ -181,7 +183,6 @@ class Agent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
-
 if __name__ == "__main__":
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -213,7 +214,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = SyncVectorBalletEnv(
-        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)]
+        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)], 4
     )
 
     agent = Agent(envs).to(device)
@@ -244,10 +245,6 @@ if __name__ == "__main__":
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
     )
-    # next_lstm_state_dict["decoder"] = (
-    #     torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device),
-    #     torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device),
-    # )  # hidden and cell states (see https://youtu.be/8HyCNIVRbSU)
     num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
@@ -376,8 +373,6 @@ if __name__ == "__main__":
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
                 entropy_loss = entropy.mean()
-
-
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
                 optimizer.zero_grad()

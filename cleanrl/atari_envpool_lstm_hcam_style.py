@@ -181,7 +181,7 @@ class Agent(nn.Module):
     def get_action_and_value(self, x, lstm_state_dict, done, action=None):
         # encoder and memory
         hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
-        
+
         # actor output
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
@@ -190,6 +190,7 @@ class Agent(nn.Module):
 
         # critic output
         value = self.critic(hidden)
+
         return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
