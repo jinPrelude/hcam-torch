@@ -54,11 +54,11 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-lstm-layers", type=int, default=3,
+    parser.add_argument("--num-lstm-layers", type=int, default=2,
         help="the number of layers(stack) of lstm")
     parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--num-minibatches", type=int, default=16,
+    parser.add_argument("--num-minibatches", type=int, default=12,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
         help="the K epochs to update the policy")
