@@ -1,9 +1,11 @@
 program: cleanrl/ballet_lstm_lang_fc.py
-method: grid
+method: bayes
 metric: 
   name: charts/avg_episodic_return
   goal: maximize
 parameters:
+  env-ids:
+    value: '2_delay2'
   num-minibatches:
     values: [6, 12]
   update-epochs:
