@@ -5,7 +5,7 @@ metric:
   goal: maximize
 parameters:
   num-minibatches:
-    values: [6, 12]
+    values: [8, 12]
   update-epochs:
     values: [2, 4]
   clip-coef:
