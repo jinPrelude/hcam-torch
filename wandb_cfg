@@ -1,4 +1,4 @@
-program: cleanrl/ballet_lstm_lang_fc
+program: cleanrl/ballet_lstm_lang_fc.py
 method: bayes
 metric: 
   name: charts/avg_episodic_return
