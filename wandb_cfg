@@ -1,24 +1,24 @@
-program: cleanrl/ppo_atari_envpool_lstm_hcam_style.py
+program: cleanrl/ballet_lstm_lang_fc
 method: bayes
 metric: 
   name: charts/avg_episodic_return
   goal: maximize
 parameters:
   num-minibatches:
-    values: [1, 2, 4]
+    values: [8, 16]
   update-epochs:
-    values: [1, 2, 4, 8]
+    values: [2, 4]
   clip-coef:
-    values: [0.1, 0.2, 0.3]
+    values: [0.2, 0.3]
   max-grad-norm:
-    distribution: uniform
-    min: 0
-    max: 5
+    values: [0.1, 0.3, 0.5]
   num-envs:
     value: 24
   total-timesteps:
-    value: 2000000
+    value: 5000000
   num-lstm-layers:
-    value: 3
+    value: [1, 2]
+  num-steps:
+    values: [16, 32, 64]
   track:
     value: True
