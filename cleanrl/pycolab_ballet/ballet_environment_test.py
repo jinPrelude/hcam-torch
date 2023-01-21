@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for pycolab_ballet.ballet_environment_wrapper."""
+"""Tests for ballet_env.pycolab_balletironment_wrapper."""
 from absl.testing import absltest
 from absl.testing import parameterized
 

@@ -1,25 +1,22 @@
-# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_lstmpy
+from cleanrl.pycolab_ballet import ballet_environment
+from cleanrl.pycolab_ballet.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
+
 import argparse
 import os
 import random
 import time
+from collections import deque
 from distutils.util import strtobool
 
 import gym
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
-from stable_baselines3.common.atari_wrappers import (  # isort:skip
-    ClipRewardEnv,
-    EpisodicLifeEnv,
-    FireResetEnv,
-    MaxAndSkipEnv,
-    NoopResetEnv,
-)
 
 
 def parse_args():
@@ -43,13 +40,13 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="BreakoutNoFrameskip-v4",
+    parser.add_argument("--env-id", type=str, default='2_delay16',
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=8,
+    parser.add_argument("--num-envs", type=int, default=64,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=128,
         help="the number of steps to run in each environment per policy rollout")
@@ -59,13 +56,17 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=4,
+    parser.add_argument("--num-lstm-layers", type=int, default=3,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--lstm-hidden-size", type=int, default=512,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--num-minibatches", type=int, default=32,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=4,
+    parser.add_argument("--update-epochs", type=int, default=3,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
-    parser.add_argument("--clip-coef", type=float, default=0.1,
+    parser.add_argument("--clip-coef", type=float, default=0.2,
         help="the surrogate clipping coefficient")
     parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
@@ -82,30 +83,6 @@ def parse_args():
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
-
-
-def make_env(env_id, seed, idx, capture_video, run_name):
-    def thunk():
-        env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        if capture_video:
-            if idx == 0:
-                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env = NoopResetEnv(env, noop_max=30)
-        env = MaxAndSkipEnv(env, skip=4)
-        env = EpisodicLifeEnv(env)
-        if "FIRE" in env.unwrapped.get_action_meanings():
-            env = FireResetEnv(env)
-        env = ClipRewardEnv(env)
-        env = gym.wrappers.ResizeObservation(env, (84, 84))
-        env = gym.wrappers.GrayScaleObservation(env)
-        env = gym.wrappers.FrameStack(env, 1)
-        env.seed(seed)
-        env.action_space.seed(seed)
-        env.observation_space.seed(seed)
-        return env
-
-    return thunk
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -126,70 +103,48 @@ class Agent(nn.Module):
         super().__init__()
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)),
+            layer_init(nn.Conv2d(3, 16, 9, stride=9)),
             nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+            layer_init(nn.Conv2d(16, 32, 3, stride=1)),
             nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+            layer_init(nn.Conv2d(32, 32, 3, stride=1)),
             nn.ReLU(),
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 256)),
+            layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        # self.lang_encoder_lstm = nn.LSTM(14, 256)
-        # self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
-        # self.lang_embedding = nn.Sequential(
-        #     layer_init(nn.Linear(256, 32)),
-        #     nn.ReLU(),
-        # )
+        self.lang_encoder_lstm = nn.LSTM(14, 256)
+        self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
+        self.lang_embedding = nn.Sequential(
+            layer_init(nn.Linear(256, 32)),
+            nn.ReLU(),
+        )
         # Memory block
-        self.memory_lstm = nn.LSTM(256, 512, 4)
+        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
-        # self.img_decoder_fc = nn.Sequential(
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        # )
-        # self.img_decoder = nn.Sequential(
-        #     layer_init(nn.Linear(256, 32 * 7 * 7)),
-        #     nn.ReLU(),
-        #     nn.Unflatten(1, (32, 7, 7)),
-        #     layer_init(nn.ConvTranspose2d(32, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(32, 16, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.ConvTranspose2d(16, 3, 9, stride=9)),
-        #     nn.ReLU(),
-        # )
-        # self.lang_decoder_fc = nn.Sequential(
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        # )
-        # self.lang_decoder_lstm = nn.LSTM(256, 14)
-        # self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
-
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, 8), std=0.01)
+        self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
+        
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        img_hidden = self.img_encoder(x / 255.0)
-        # batch_size = lstm_state_dict["encoder"][0].shape[1]
-        # lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
-        # lang_hidden = []
-        # for h, d in zip(lang_input, done):
-        #     h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
-        #         h.unsqueeze(0),
-        #         (
-        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][0],
-        #             (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][1],
-        #         ),
-        #     )
-        #     lang_hidden += [h]
-        # lang_hidden = torch.flatten(torch.cat(lang_hidden), 0, 1)
-        # lang_hidden = self.lang_embedding(lang_hidden)
-        # hidden = torch.cat([img_hidden, lang_hidden], 1)
-        hidden = img_hidden
+        img_hidden = self.img_encoder(x[0])
+        batch_size = lstm_state_dict["encoder"][0].shape[1]
+        lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
+        lang_hidden = []
+        for h, d in zip(lang_input, done):
+            h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
+                h.unsqueeze(0),
+                (
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][0],
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][1],
+                ),
+            )
+            lang_hidden += [h]
+        lang_hidden = torch.flatten(torch.cat(lang_hidden), 0, 1)
+        lang_hidden = self.lang_embedding(lang_hidden)
+        hidden = torch.cat([img_hidden, lang_hidden], 1)
 
         # Memory logic
         batch_size = lstm_state_dict["memory"][0].shape[1]
@@ -215,7 +170,7 @@ class Agent(nn.Module):
     def get_action_and_value(self, x, lstm_state_dict, done, action=None):
         # encoder and memory
         hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
-        
+
         # actor output
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
@@ -224,6 +179,7 @@ class Agent(nn.Module):
 
         # critic output
         value = self.critic(hidden)
+
         return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
@@ -257,28 +213,34 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+    envs = SyncVectorBalletEnv(
+        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)], 4
     )
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    obs_img = torch.zeros((args.num_steps, args.num_envs) + (3, 99, 99)).to(device) # (3, 99, 99) for image observation space of ballet
+    obs_lang = torch.zeros((args.num_steps, args.num_envs, 14)).to(device) # 14 for language observation space of ballet
+    actions = torch.zeros((args.num_steps, args.num_envs)).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    avg_returns = deque(maxlen=20)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs = torch.Tensor(envs.reset()).to(device)
+    (next_obs_img, next_obs_lang) = envs.reset()
+    next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     next_lstm_state_dict = {}
+    next_lstm_state_dict["encoder"] = (
+        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
+        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
+    )
     next_lstm_state_dict["memory"] = (
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
@@ -286,9 +248,9 @@ if __name__ == "__main__":
     num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
-        initial_lstm_state_dict = {
-            "memory" : (next_lstm_state_dict["memory"][0].clone(), next_lstm_state_dict["memory"][1].clone())
-        }
+        initial_lstm_state_dict = {}
+        for key in next_lstm_state_dict.keys():
+            initial_lstm_state_dict[key] = (next_lstm_state_dict[key][0].clone(), next_lstm_state_dict[key][1].clone())
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -297,24 +259,28 @@ if __name__ == "__main__":
 
         for step in range(0, args.num_steps):
             global_step += 1 * args.num_envs
-            obs[step] = next_obs
+            obs_img[step] = next_obs_img
+            obs_lang[step] = next_obs_lang
             dones[step] = next_done
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value(next_obs, next_lstm_state_dict, next_done)
+                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value((next_obs_img, next_obs_lang), next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, done, info = envs.step(action.cpu().numpy())
+            (next_obs_img, next_obs_lang), reward, done, info = envs.step(action.cpu().numpy())
             rewards[step] = torch.tensor(reward).to(device).view(-1)
-            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+            next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
+            next_done = torch.Tensor(done).to(device)
 
             for item in info:
                 if "episode" in item.keys():
                     print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
+                    avg_returns.append(item['episode']['r'])
+                    writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
                     writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
                     break
@@ -322,7 +288,7 @@ if __name__ == "__main__":
         # bootstrap value if not done
         with torch.no_grad():
             next_value = agent.get_value(
-                next_obs,
+                (next_obs_img, next_obs_lang),
                 next_lstm_state_dict,
                 next_done,
             ).reshape(1, -1)
@@ -340,9 +306,10 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_obs_img = obs_img.reshape((-1,) + (3, 99, 99))
+        b_obs_lang = obs_lang.reshape((-1, 14))
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_actions = actions.reshape(-1)
         b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
@@ -360,12 +327,15 @@ if __name__ == "__main__":
                 end = start + envsperbatch
                 mbenvinds = envinds[start:end]
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
-                lstm_state_dict_for_train = {
-                    "memory" : (initial_lstm_state_dict["memory"][0][:, mbenvinds], initial_lstm_state_dict["memory"][1][:, mbenvinds])
-                }
+
+                # cut lstm
+                lstm_dict_for_train = {}
+                for key in next_lstm_state_dict.keys():
+                    lstm_dict_for_train[key] = (initial_lstm_state_dict[key][0][:, mbenvinds], initial_lstm_state_dict[key][1][:, mbenvinds])
+
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
-                    b_obs[mb_inds],
-                    lstm_state_dict_for_train,
+                    (b_obs_img[mb_inds], b_obs_lang[mb_inds]),
+                    lstm_dict_for_train,
                     b_dones[mb_inds],
                     b_actions.long()[mb_inds],
                 )

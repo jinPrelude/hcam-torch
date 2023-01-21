@@ -1,11 +1,12 @@
-# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppopy
-
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_lstmpy
 import argparse
 import os
 import random
 import time
+from collections import deque
 from distutils.util import strtobool
 
+import envpool
 import gym
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
+
 
 
 def parse_args():
@@ -36,13 +38,13 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="CartPole-v1",
+    parser.add_argument("--env-id", type=str, default="Pong-v5",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=500000,
+    parser.add_argument("--total-timesteps", type=int, default=10000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=4,
+    parser.add_argument("--num-envs", type=int, default=24,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=128,
         help="the number of steps to run in each environment per policy rollout")
@@ -52,9 +54,13 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=4,
+    parser.add_argument("--num-lstm-layers", type=int, default=2,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--lstm-hidden-size", type=int, default=512,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--num-minibatches", type=int, default=12,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=4,
+    parser.add_argument("--update-epochs", type=int, default=3,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -77,19 +83,38 @@ def parse_args():
     return args
 
 
-def make_env(env_id, seed, idx, capture_video, run_name):
-    def thunk():
-        env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        if capture_video:
-            if idx == 0:
-                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env.seed(seed)
-        env.action_space.seed(seed)
-        env.observation_space.seed(seed)
-        return env
+class RecordEpisodeStatistics(gym.Wrapper):
+    def __init__(self, env, deque_size=100):
+        super().__init__(env)
+        self.num_envs = getattr(env, "num_envs", 1)
+        self.episode_returns = None
+        self.episode_lengths = None
 
-    return thunk
+    def reset(self, **kwargs):
+        observations = super().reset(**kwargs)
+        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
+        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.lives = np.zeros(self.num_envs, dtype=np.int32)
+        self.returned_episode_returns = np.zeros(self.num_envs, dtype=np.float32)
+        self.returned_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        return observations
+
+    def step(self, action):
+        observations, rewards, dones, infos = super().step(action)
+        self.episode_returns += infos["reward"]
+        self.episode_lengths += 1
+        self.returned_episode_returns[:] = self.episode_returns
+        self.returned_episode_lengths[:] = self.episode_lengths
+        self.episode_returns *= 1 - infos["terminated"]
+        self.episode_lengths *= 1 - infos["terminated"]
+        infos["r"] = self.returned_episode_returns
+        infos["l"] = self.returned_episode_lengths
+        return (
+            observations,
+            rewards,
+            dones,
+            infos,
+        )
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -97,34 +122,76 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+def lstm_init(lstm):
+    for name, param in lstm.named_parameters():
+            if "bias" in name:
+                nn.init.constant_(param, 0)
+            elif "weight" in name:
+                nn.init.orthogonal_(param, 1.0)
+    return lstm
 
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+        # Encoder block
+        self.img_encoder = nn.Sequential(
+            layer_init(nn.Conv2d(1, 16, 9, stride=9)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(16, 32, 3, stride=1)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(32, 32, 3, stride=1)),
+            nn.ReLU(),
+            nn.Flatten(),
+            layer_init(nn.Linear(32 * 7 * 7, 256)),
+            nn.ReLU(),
         )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
-        )
+        # Memory block
+        self.memory_lstm = nn.LSTM(256, args.lstm_hidden_size, args.num_lstm_layers)
+        self.memory_lstm = lstm_init(self.memory_lstm)
 
-    def get_value(self, x):
-        return self.critic(x)
+        # Decoder block
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
 
-    def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
+    def get_states(self, x, lstm_state_dict, done):
+        # Encoder logic
+        hidden = self.img_encoder(x / 255.0)
+
+        # Memory logic
+        batch_size = lstm_state_dict["memory"][0].shape[1]
+        hidden = hidden.reshape((-1, batch_size, self.memory_lstm.input_size))
+        done = done.reshape((-1, batch_size))
+        new_hidden = []
+        for h, d in zip(hidden, done):
+            h, lstm_state_dict["memory"] = self.memory_lstm(
+                h.unsqueeze(0),
+                (
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][0],
+                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][1],
+                ),
+            )
+            new_hidden += [h]
+        new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
+        return new_hidden, lstm_state_dict
+
+    def get_value(self, x, lstm_state_dict, done):
+        hidden, _ = self.get_states(x, lstm_state_dict, done)
+        return self.critic(hidden)
+
+    def get_action_and_value(self, x, lstm_state_dict, done, action=None):
+        # encoder and memory
+        hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
+
+        # actor output
+        logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+
+        # critic output
+        value = self.critic(hidden)
+
+        return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
 if __name__ == "__main__":
@@ -157,10 +224,22 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+    envs = envpool.make(
+        args.env_id,
+        env_type="gym",
+        num_envs=args.num_envs,
+        episodic_life=True,
+        reward_clip=True,
+        seed=args.seed,
+        stack_num=1,
+        img_height=99,
+        img_width=99,
     )
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    envs.num_envs = args.num_envs
+    envs.single_action_space = envs.action_space
+    envs.single_observation_space = envs.observation_space
+    envs = RecordEpisodeStatistics(envs)
+    assert isinstance(envs.action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -172,15 +251,24 @@ if __name__ == "__main__":
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    avg_returns = deque(maxlen=20)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
     next_obs = torch.Tensor(envs.reset()).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
+    next_lstm_state_dict = {}
+    next_lstm_state_dict["memory"] = (
+        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
+        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
+    )
     num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
+        initial_lstm_state_dict = {
+            "memory" : (next_lstm_state_dict["memory"][0].clone(), next_lstm_state_dict["memory"][1].clone())
+        }
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -194,7 +282,7 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(next_obs)
+                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value(next_obs, next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -204,16 +292,21 @@ if __name__ == "__main__":
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
 
-            for item in info:
-                if "episode" in item.keys():
-                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
-                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
-                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
-                    break
+            for idx, d in enumerate(done):
+                if d and info["lives"][idx] == 0:
+                    print(f"global_step={global_step}, episodic_return={info['r'][idx]}")
+                    avg_returns.append(info["r"][idx])
+                    writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
+                    writer.add_scalar("charts/episodic_return", info["r"][idx], global_step)
+                    writer.add_scalar("charts/episodic_length", info["l"][idx], global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
-            next_value = agent.get_value(next_obs).reshape(1, -1)
+            next_value = agent.get_value(
+                next_obs,
+                next_lstm_state_dict,
+                next_done,
+            ).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
@@ -231,20 +324,32 @@ if __name__ == "__main__":
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
         # Optimizing the policy and value network
-        b_inds = np.arange(args.batch_size)
+        assert args.num_envs % args.num_minibatches == 0
+        envsperbatch = args.num_envs // args.num_minibatches
+        envinds = np.arange(args.num_envs)
+        flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
         clipfracs = []
         for epoch in range(args.update_epochs):
-            np.random.shuffle(b_inds)
-            for start in range(0, args.batch_size, args.minibatch_size):
-                end = start + args.minibatch_size
-                mb_inds = b_inds[start:end]
-
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
+            np.random.shuffle(envinds)
+            for start in range(0, args.num_envs, envsperbatch):
+                end = start + envsperbatch
+                mbenvinds = envinds[start:end]
+                mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
+                lstm_state_dict_for_train = {
+                    "memory" : (initial_lstm_state_dict["memory"][0][:, mbenvinds], initial_lstm_state_dict["memory"][1][:, mbenvinds])
+                }
+                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
+                    b_obs[mb_inds],
+                    lstm_state_dict_for_train,
+                    b_dones[mb_inds],
+                    b_actions.long()[mb_inds],
+                )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
