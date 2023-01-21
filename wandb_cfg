@@ -4,7 +4,7 @@ metric:
   name: charts/avg_episodic_return
   goal: maximize
 parameters:
-  env-ids:
+  env-id:
     value: '2_delay2'
   num-minibatches:
     values: [6, 12]
