@@ -73,6 +73,8 @@ def parse_args():
         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
         help="coefficient of the value function")
+    parser.add_argument("--r-coef", type=float, default=0.5,
+        help="coefficient of the reconstruction loss")
     parser.add_argument("--max-grad-norm", type=float, default=0.5,
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
@@ -143,7 +145,7 @@ class Agent(nn.Module):
         #     nn.ReLU(),
         # )
         # Memory block
-        self.memory_lstm = nn.LSTM(256, 512, 4)
+        self.memory_lstm = nn.LSTM(256, 512, 1)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
@@ -269,7 +271,6 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
-    # reconstruction_loss = nn.CrossEntropyLoss()
     reconstruction_loss = nn.MSELoss()
 
     # ALGO Logic: Storage setup
@@ -413,9 +414,7 @@ if __name__ == "__main__":
                 r_loss = reconstruction_loss(input_reconstruction, b_obs[mb_inds])
 
                 entropy_loss = entropy.mean()
-                # loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
-                loss = r_loss
-                print(loss.item())
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + r_loss * args.r_coef
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -434,6 +433,7 @@ if __name__ == "__main__":
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+        writer.add_scalar("losses/reconstruction_loss", r_loss.item(), global_step)
         writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
         writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
