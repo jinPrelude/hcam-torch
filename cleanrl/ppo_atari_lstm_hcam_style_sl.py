@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import save_image
 
 from stable_baselines3.common.atari_wrappers import (  # isort:skip
     ClipRewardEnv,
@@ -420,6 +421,12 @@ if __name__ == "__main__":
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
+
+                # Save reconstructed input as image file for visualization
+                # if global_step > 10000:
+                #     img_in, img_out = b_obs[mb_inds][5], input_reconstruction[5]
+                #     save_image(img_in / 255, 'img_in.png')
+                #     save_image(img_out / 255, 'img_out.png')
 
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:
