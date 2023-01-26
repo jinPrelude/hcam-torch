@@ -12,7 +12,6 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
-
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -50,7 +49,7 @@ def parse_args():
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=64,
         help="the number of steps to run in each environment per policy rollout")
-    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument("--gamma", type=float, default=0.99,
         help="the discount factor gamma")
@@ -103,7 +102,7 @@ class Agent(nn.Module):
         super().__init__()
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(3, 16, 9, stride=9)),
+            layer_init(nn.Conv2d(1, 16, 9, stride=9)),
             nn.ReLU(),
             layer_init(nn.Conv2d(16, 32, 3, stride=1)),
             nn.ReLU(),
@@ -201,7 +200,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = SyncVectorBalletEnv(
-        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)], 4
+        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id), gray_scale=True) for i in range(args.num_envs)], 4
     )
 
     agent = Agent(envs).to(device)
@@ -289,7 +288,7 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs_img = obs_img.reshape((-1,) + (3, 99, 99))
+        b_obs_img = obs_img.reshape((-1,) + (1, 99, 99))
         b_obs_lang = obs_lang.reshape((-1, 14))
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape(-1)
