@@ -1,5 +1,6 @@
 from multiprocessing import Process
 
+from PIL import Image
 import numpy as np
 import random
 import gym
@@ -50,9 +51,10 @@ class SyncVectorBalletEnv():
         return [obs_images, obs_languages], rewards, dones, infos
 
 class BalletEnv(gym.Wrapper):
-    def __init__(self, env):
+    def __init__(self, env, gray_scale=False):
         super().__init__(env)
         self.env = env
+        self.gray_scale = gray_scale
         self.language_dict = {
             "watch": 0,
             "circle_cw": 1,
@@ -76,7 +78,8 @@ class BalletEnv(gym.Wrapper):
         one_hot = self.language_dict[str(obs[1])]
         language_one_hot_vector = np.zeros(14)
         language_one_hot_vector[one_hot] = 1
-        obs = (np.transpose(obs[0], (-1, 0, 1)), language_one_hot_vector)
+        img_obs = self._rgb2gray(obs[0]) if self.gray_scale else obs[0]
+        obs = (np.transpose(img_obs, (-1, 0, 1)), language_one_hot_vector)
         return obs
 
     def step(self, action):
@@ -85,7 +88,15 @@ class BalletEnv(gym.Wrapper):
         one_hot = self.language_dict[str(obs[1])]
         language_one_hot_vector = np.zeros(14)
         language_one_hot_vector[one_hot] = 1
-        obs = (np.transpose(obs[0], (-1, 0, 1)), language_one_hot_vector)
+        img_obs = self._rgb2gray(obs[0]) if self.gray_scale else obs[0]
+        obs = (np.transpose(img_obs, (-1, 0, 1)), language_one_hot_vector)
         reward = timestep.reward
         done = timestep.last()
         return obs, reward, done, {}
+
+    def _rgb2gray(self, rgb_array):
+        rgb_img = np.uint8(rgb_array*255)
+        grayscale_img = Image.fromarray(rgb_img)
+        grayscale_array = np.array(grayscale_img.convert('L')) / 255.
+        grayscale_array = np.expand_dims(grayscale_array, axis=-1)
+        return grayscale_array
