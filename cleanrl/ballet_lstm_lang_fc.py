@@ -207,7 +207,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs_img = torch.zeros((args.num_steps, args.num_envs) + (3, 99, 99)).to(device) # (3, 99, 99) for image observation space of ballet
+    obs_img = torch.zeros((args.num_steps, args.num_envs) + (1, 99, 99)).to(device) # (1, 99, 99) for image observation space of ballet
     obs_lang = torch.zeros((args.num_steps, args.num_envs, 14)).to(device) # 14 for language observation space of ballet
     actions = torch.zeros((args.num_steps, args.num_envs)).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
