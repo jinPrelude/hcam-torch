@@ -43,9 +43,9 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default='2_delay2',
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+    parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--num-envs", type=int, default=24,
         help="the number of parallel game environments")
@@ -248,6 +248,7 @@ if __name__ == "__main__":
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
     )
     num_updates = args.total_timesteps // args.batch_size
+    video_filenames = set()
 
     for update in range(1, num_updates + 1):
         initial_lstm_state_dict = {
@@ -398,6 +399,12 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+        if args.track and args.capture_video:
+            for filename in os.listdir(f"videos/{run_name}"):
+                if filename not in video_filenames and filename.endswith(".gif"):
+                    wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
+                    video_filenames.add(filename)
 
     envs.close()
     writer.close()
