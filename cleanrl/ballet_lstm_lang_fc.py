@@ -1,5 +1,7 @@
-from cleanrl.pycolab_ballet import ballet_environment
-from cleanrl.pycolab_ballet.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
+from gym_balletenv.envs import BalletEnvironment
+from cleanrl.wrappers_balletenv.gray_scale_observation import GrayScaleObservation
+from cleanrl.wrappers_balletenv.record_video import RecordVideo
+from cleanrl.wrappers_balletenv.newaxis_observation import NewAxisObservation
 
 import argparse
 import os
@@ -82,6 +84,23 @@ def parse_args():
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
+
+
+def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
+    def thunk():
+        env = BalletEnvironment(env_id, max_steps)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = RecordVideo(env, f"videos/{run_name}")
+        env = GrayScaleObservation(env)
+        env = NewAxisObservation(env)
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+
+    return thunk
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -199,17 +218,18 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = SyncVectorBalletEnv(
-        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id), gray_scale=True) for i in range(args.num_envs)], 4
-    )
+    envs = gym.vector.SyncVectorEnv(
+            [make_env(args.env_id, 240, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+        )
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs_img = torch.zeros((args.num_steps, args.num_envs) + (1, 99, 99)).to(device) # (1, 99, 99) for image observation space of ballet
-    obs_lang = torch.zeros((args.num_steps, args.num_envs, 14)).to(device) # 14 for language observation space of ballet
-    actions = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    obs_img = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[0].shape).to(device)
+    obs_lang = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[1].shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -288,10 +308,10 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs_img = obs_img.reshape((-1,) + (1, 99, 99))
-        b_obs_lang = obs_lang.reshape((-1, 14))
+        b_obs_img = obs_img.reshape((-1,) + envs.single_observation_space[0].shape)
+        b_obs_lang = obs_lang.reshape((-1,) + envs.single_observation_space[1].shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape(-1)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
