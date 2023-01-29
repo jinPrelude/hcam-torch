@@ -40,13 +40,13 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="Breakout-v5",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+    parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=24,
+    parser.add_argument("--num-envs", type=int, default=192,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=64,
+    parser.add_argument("--num-steps", type=int, default=128,
         help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
@@ -58,7 +58,7 @@ def parse_args():
         help="the number of layers(stack) of lstm")
     parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--num-minibatches", type=int, default=12,
+    parser.add_argument("--num-minibatches", type=int, default=32,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=3,
         help="the K epochs to update the policy")
