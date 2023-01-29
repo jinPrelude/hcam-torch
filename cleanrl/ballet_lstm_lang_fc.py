@@ -47,9 +47,9 @@ def parse_args():
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=24,
+    parser.add_argument("--num-envs", type=int, default=192,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=64,
+    parser.add_argument("--num-steps", type=int, default=32,
         help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
@@ -61,13 +61,13 @@ def parse_args():
         help="the number of layers(stack) of lstm")
     parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--num-minibatches", type=int, default=12,
+    parser.add_argument("--num-minibatches", type=int, default=32,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=3,
+    parser.add_argument("--update-epochs", type=int, default=6,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
-    parser.add_argument("--clip-coef", type=float, default=0.25,
+    parser.add_argument("--clip-coef", type=float, default=0.2,
         help="the surrogate clipping coefficient")
     parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
