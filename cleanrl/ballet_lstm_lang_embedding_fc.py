@@ -1,5 +1,5 @@
 from gym_balletenv.envs import BalletEnvironment
-from gym_balletenv.wrappers import GrayScaleObservation, RecordVideo, TransposeObservation, OnehotLanguage
+from gym_balletenv.wrappers import GrayScaleObservation, RecordVideo, TransposeObservation
 
 import argparse
 import os
@@ -93,7 +93,6 @@ def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
                 env = RecordVideo(env, f"videos/{run_name}")
         env = GrayScaleObservation(env)
         env = TransposeObservation(env)
-        env = OnehotLanguage(env)
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -118,6 +117,9 @@ def lstm_init(lstm):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        # word embedding
+        self.embedding = nn.Embedding(14, 32)
+
         # Encoder block
         self.img_encoder = nn.Sequential(
             layer_init(nn.Conv2d(1, 16, 9, stride=9)),
@@ -131,7 +133,7 @@ class Agent(nn.Module):
             nn.ReLU(),
         )
         self.lang_encoder = nn.Sequential(
-            layer_init(nn.Linear(14, 256)),
+            layer_init(nn.Linear(32, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 32)),
             nn.ReLU(),
@@ -147,7 +149,8 @@ class Agent(nn.Module):
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
         img_hidden = self.img_encoder(x[0] / 255.0)
-        lang_hidden = self.lang_encoder(x[1])
+        lang_lookup = self.embedding(torch.Tensor.int(x[1]))
+        lang_hidden = self.lang_encoder(lang_lookup)
         hidden = torch.cat([img_hidden, lang_hidden], 1)
 
         # Memory logic
