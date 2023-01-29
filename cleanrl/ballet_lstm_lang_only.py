@@ -1,5 +1,5 @@
-from cleanrl.pycolab_ballet import ballet_environment
-from cleanrl.pycolab_ballet.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
+from gym_balletenv.envs import BalletEnvironment
+from gym_balletenv.wrappers import GrayScaleObservation, RecordVideo, TransposeObservation
 
 import argparse
 import os
@@ -12,7 +12,6 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -40,29 +39,29 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default='2_delay16',
+    parser.add_argument("--env-id", type=str, default='2_delay2',
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=100000000,
+    parser.add_argument("--total-timesteps", type=int, default=5000000000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+    parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=64,
+    parser.add_argument("--num-envs", type=int, default=192,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=128,
+    parser.add_argument("--num-steps", type=int, default=64,
         help="the number of steps to run in each environment per policy rollout")
-    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument("--gamma", type=float, default=0.99,
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-lstm-layers", type=int, default=3,
+    parser.add_argument("--num-lstm-layers", type=int, default=2,
         help="the number of layers(stack) of lstm")
     parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=32,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=3,
+    parser.add_argument("--update-epochs", type=int, default=6,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -85,6 +84,23 @@ def parse_args():
     return args
 
 
+def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
+    def thunk():
+        env = BalletEnvironment(env_id, max_steps)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = RecordVideo(env, f"videos/{run_name}")
+        env = GrayScaleObservation(env)
+        env = TransposeObservation(env)
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+
+    return thunk
+
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
@@ -101,9 +117,12 @@ def lstm_init(lstm):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        # word embedding
+        self.embedding = nn.Embedding(14, 32)
+
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(3, 16, 9, stride=9)),
+            layer_init(nn.Conv2d(1, 16, 9, stride=9)),
             nn.ReLU(),
             layer_init(nn.Conv2d(16, 32, 3, stride=1)),
             nn.ReLU(),
@@ -113,7 +132,7 @@ class Agent(nn.Module):
             layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lang_encoder_lstm = nn.LSTM(14, 256)
+        self.lang_encoder_lstm = nn.LSTM(32, 256)
         self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
         self.lang_embedding = nn.Sequential(
             layer_init(nn.Linear(256, 32)),
@@ -124,14 +143,15 @@ class Agent(nn.Module):
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, 8), std=0.01)
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
         
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        img_hidden = self.img_encoder(x[0])
+        img_hidden = self.img_encoder(x[0] / 255.0)
         batch_size = lstm_state_dict["encoder"][0].shape[1]
-        lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
+        lang_lookup = self.embedding(torch.Tensor.int(x[1]))
+        lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
         lang_hidden = []
         for h, d in zip(lang_input, done):
             h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
@@ -213,22 +233,23 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = SyncVectorBalletEnv(
-        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)], 4
-    )
+    envs = gym.vector.SyncVectorEnv(
+            [make_env(args.env_id, 240, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+        )
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs_img = torch.zeros((args.num_steps, args.num_envs) + (3, 99, 99)).to(device) # (3, 99, 99) for image observation space of ballet
-    obs_lang = torch.zeros((args.num_steps, args.num_envs, 14)).to(device) # 14 for language observation space of ballet
-    actions = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    obs_img = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[0].shape).to(device)
+    obs_lang = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[1].shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
-    avg_returns = deque(maxlen=20)
+    avg_returns = deque(maxlen=50)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
@@ -246,6 +267,7 @@ if __name__ == "__main__":
         torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
     )
     num_updates = args.total_timesteps // args.batch_size
+    video_filenames = set()
 
     for update in range(1, num_updates + 1):
         initial_lstm_state_dict = {}
@@ -306,10 +328,10 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs_img = obs_img.reshape((-1,) + (3, 99, 99))
-        b_obs_lang = obs_lang.reshape((-1, 14))
+        b_obs_img = obs_img.reshape((-1,) + envs.single_observation_space[0].shape)
+        b_obs_lang = obs_lang.reshape((-1,) + envs.single_observation_space[1].shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape(-1)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
@@ -399,6 +421,12 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+        if args.track and args.capture_video:
+            for filename in os.listdir(f"videos/{run_name}"):
+                if filename not in video_filenames and filename.endswith(".gif"):
+                    wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
+                    video_filenames.add(filename)
 
     envs.close()
     writer.close()
