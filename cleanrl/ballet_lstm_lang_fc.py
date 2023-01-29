@@ -142,12 +142,12 @@ class Agent(nn.Module):
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, 8), std=0.01)
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
 
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        img_hidden = self.img_encoder(x[0])
+        img_hidden = self.img_encoder(x[0] / 255.0)
         lang_hidden = self.lang_encoder(x[1])
         hidden = torch.cat([img_hidden, lang_hidden], 1)
 
