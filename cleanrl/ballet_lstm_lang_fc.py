@@ -1,7 +1,7 @@
 from gym_balletenv.envs import BalletEnvironment
-from cleanrl.wrappers_balletenv.gray_scale_observation import GrayScaleObservation
-from cleanrl.wrappers_balletenv.record_video import RecordVideo
-from cleanrl.wrappers_balletenv.newaxis_observation import NewAxisObservation
+from gym_balletenv.wrappers.gray_scale_observation import GrayScaleObservation
+from gym_balletenv.wrappers.record_video import RecordVideo
+from gym_balletenv.wrappers.transpose_observation import TransposeObservation
 
 import argparse
 import os
@@ -94,7 +94,7 @@ def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
             if idx == 0:
                 env = RecordVideo(env, f"videos/{run_name}")
         env = GrayScaleObservation(env)
-        env = NewAxisObservation(env)
+        env = TransposeObservation(env)
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
