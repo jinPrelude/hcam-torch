@@ -8,7 +8,7 @@ import time
 from collections import deque
 from distutils.util import strtobool
 
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
@@ -87,13 +87,11 @@ def parse_args():
 def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
     def thunk():
         env = BalletEnvironment(env_id, max_steps)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
         if capture_video:
             if idx == 0:
                 env = RecordVideo(env, f"videos/{run_name}")
         env = GrayScaleObservation(env)
         env = TransposeObservation(env)
-        env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
         return env
@@ -236,6 +234,7 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv(
             [make_env(args.env_id, 240, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
         )
+    envs = gym.wrappers.RecordEpisodeStatistics(envs)
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
@@ -254,7 +253,7 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    (next_obs_img, next_obs_lang) = envs.reset()
+    (next_obs_img, next_obs_lang) = envs.reset()[0]
     next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     next_lstm_state_dict = {}
@@ -293,19 +292,19 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            (next_obs_img, next_obs_lang), reward, done, info = envs.step(action.cpu().numpy())
+            (next_obs_img, next_obs_lang), reward, done, _, info = envs.step(action.cpu().numpy())
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
             next_done = torch.Tensor(done).to(device)
 
-            for item in info:
-                if "episode" in item.keys():
-                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
-                    avg_returns.append(item['episode']['r'])
-                    writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
-                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
-                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
-                    break
+            if "episode" in info:
+                first_idx = info["_episode"].nonzero()[0][0]
+                r = info["episode"]["r"][first_idx]
+                l = info["episode"]["l"][first_idx]
+                print(f"global_step={global_step}, episodic_return={r}")
+                writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
+                writer.add_scalar("charts/episodic_return", r, global_step)
+                writer.add_scalar("charts/episodic_length", l, global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
