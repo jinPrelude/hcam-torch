@@ -26,5 +26,5 @@ If the installation completed, try ppo_atari_lstm.py
 ```bash
 # --cuda for gpu usage
 # --track for logging wandb.ai
-python cleanrl/ppo_atari_lstm.py --cuda --env-id PongNoFrameskip-v4 --track
+python ballet_lstm_lang_only --track
 ```
