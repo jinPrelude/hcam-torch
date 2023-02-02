@@ -302,6 +302,7 @@ if __name__ == "__main__":
                 r = info["episode"]["r"][first_idx]
                 l = info["episode"]["l"][first_idx]
                 print(f"global_step={global_step}, episodic_return={r}")
+                avg_returns.append(r)
                 writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
                 writer.add_scalar("charts/episodic_return", r, global_step)
                 writer.add_scalar("charts/episodic_length", l, global_step)
