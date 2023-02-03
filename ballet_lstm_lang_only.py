@@ -41,6 +41,8 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default='2_delay2',
         help="the id of the environment")
+    parser.add_argument("--max-episode-steps", type=int, default=240,
+        help="the max episode step of the environment")
     parser.add_argument("--total-timesteps", type=int, default=5000000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2e-4,
@@ -232,7 +234,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.AsyncVectorEnv(
-            [make_env(args.env_id, 240, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+            [make_env(args.env_id, args.max_episode_steps, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
         )
     envs = gym.wrappers.RecordEpisodeStatistics(envs)
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
