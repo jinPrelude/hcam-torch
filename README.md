@@ -9,7 +9,7 @@ We recommand to use Anaconda(or Miniconda) to run in virtual environment.
 
 create the virtual environment.
 ```bash
-conda create -n attention-memory python=3.9
+conda create -n attention-memory python=3.9 -y
 ```
 Activate virtual environment and install poetry
 ```bash
@@ -20,11 +20,10 @@ pip install poetry
 Clone the repo and install requirements using poetry:
 ```bash
 git clone https://github.com/jinPrelude/attention-memory.git && cd attention-memory
-poetry install --with atari
+poetry install
 ```
-If the installation completed, try ppo_atari_lstm.py
+If the installation completed, try ballet_lstm_lang_only.py
 ```bash
-# --cuda for gpu usage
 # --track for logging wandb.ai
 python ballet_lstm_lang_only --track
 ```
