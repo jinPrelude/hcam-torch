@@ -10,18 +10,22 @@ We recommand to use Anaconda(or Miniconda) to run in virtual environment.
 create the virtual environment.
 ```bash
 conda create -n attention-memory python=3.9 -y
-```
-Activate virtual environment and install poetry
-```bash
-conda activate attention-memory.
-pip install poetry
+conda activate attention-memory
 ```
 
-Clone the repo and install requirements using poetry:
+Clone the repo:
 ```bash
-git clone https://github.com/jinPrelude/attention-memory.git && cd attention-memory
-poetry install
+git clone https://github.com/jinPrelude/attention-memory.git
+cd attention-memory
 ```
+
+Install poetry and run `poetry install`. This will install all dependencies we need.
+```bash
+
+pip install poetry && poetry install
+```
+
+
 If the installation completed, try ballet_lstm_lang_only.py
 ```bash
 # --track for logging wandb.ai
