@@ -1,5 +1,5 @@
 # attention-memory
-Reproduction of the paper [Towards mental time travel: a hierarchical memory for reinforcement learning agents](https://arxiv.org/abs/2105.14039) using [CleanRL](https://github.com/vwxyzjn/cleanrl/commit/94a44b5a252c432e3c47577fa46ed49c230fcce3).
+Implementation of the paper [Towards mental time travel: a hierarchical memory for reinforcement learning agents](https://arxiv.org/abs/2105.14039) using [CleanRL](https://github.com/vwxyzjn/cleanrl/commit/94a44b5a252c432e3c47577fa46ed49c230fcce3).
 
 ### Progress
 - [x] [gym-style BalletEnv reimplementation](https://github.com/jinPrelude/gym-balletenv)
