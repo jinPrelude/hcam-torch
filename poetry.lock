@@ -272,6 +272,18 @@ files = [
 ]
 
 [[package]]
+name = "decorator"
+version = "4.4.2"
+description = "Decorators for Humans"
+category = "main"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*"
+files = [
+    {file = "decorator-4.4.2-py2.py3-none-any.whl", hash = "sha256:41fa54c2a0cc4ba648be4fd43cff00aedf5b9465c9bf18d64325bc225f08f760"},
+    {file = "decorator-4.4.2.tar.gz", hash = "sha256:e3a62f0520172440ca0dcc823749319382e377f37f140a0b99ef45fecb84bfe7"},
+]
+
+[[package]]
 name = "dill"
 version = "0.3.6"
 description = "serialize all of python"
@@ -619,16 +631,15 @@ develop = false
 [package.dependencies]
 absl-py = "*"
 gymnasium = "0.27.1"
-imageio = "*"
+moviepy = "*"
 opencv-python = "*"
 pycolab = "1.2"
-pygifsicle = "*"
 
 [package.source]
 type = "git"
 url = "https://github.com/jinPrelude/gym-balletenv.git"
-reference = "v0.0.2"
-resolved_reference = "648dc64f53649fb2f927bed3958d0a004d5a0531"
+reference = "HEAD"
+resolved_reference = "e677de40fba01582650392a17c4b259a6745c288"
 
 [[package]]
 name = "gym-notices"
@@ -755,6 +766,22 @@ opencv = ["opencv-python"]
 pyav = ["av"]
 test = ["fsspec[github]", "invoke", "pytest", "pytest-cov"]
 tifffile = ["tifffile"]
+
+[[package]]
+name = "imageio-ffmpeg"
+version = "0.4.8"
+description = "FFMPEG wrapper for Python"
+category = "main"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "imageio-ffmpeg-0.4.8.tar.gz", hash = "sha256:fdaa05ad10fe070b7fa8e5f615cb0d28f3b9b791d00af6d2a11e694158d10aa9"},
+    {file = "imageio_ffmpeg-0.4.8-py3-none-macosx_10_9_intel.macosx_10_9_x86_64.macosx_10_10_intel.macosx_10_10_x86_64.whl", hash = "sha256:dba439a303d65061aef17d2ee9324ecfa9c6b4752bd0953b309fdbb79b38451e"},
+    {file = "imageio_ffmpeg-0.4.8-py3-none-manylinux2010_x86_64.whl", hash = "sha256:7caa9ce9fc0d7e2f3160ce8cb70a115e5211e0f048e5c1509163d8f89d1080df"},
+    {file = "imageio_ffmpeg-0.4.8-py3-none-manylinux2014_aarch64.whl", hash = "sha256:dd3ef9835df91570a1cbd9e36dfbc7d228fca42dbb11636e20df75d719de2949"},
+    {file = "imageio_ffmpeg-0.4.8-py3-none-win32.whl", hash = "sha256:0e2688120b3bdb367897450d07c1b1300e96a0bace03ba7de2eb8d738237ea9a"},
+    {file = "imageio_ffmpeg-0.4.8-py3-none-win_amd64.whl", hash = "sha256:120d70e6448617cad6213e47dee3a3310117c230f532dd614ed3059a78acf13a"},
+]
 
 [[package]]
 name = "importlib-metadata"
@@ -942,6 +969,34 @@ files = [
     {file = "MarkupSafe-2.1.2-cp39-cp39-win_amd64.whl", hash = "sha256:0576fe974b40a400449768941d5d0858cc624e3249dfd1e0c33674e5c7ca7aed"},
     {file = "MarkupSafe-2.1.2.tar.gz", hash = "sha256:abcabc8c2b26036d62d4c746381a6f7cf60aafcc653198ad678306986b09450d"},
 ]
+
+[[package]]
+name = "moviepy"
+version = "1.0.3"
+description = "Video editing with Python"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "moviepy-1.0.3.tar.gz", hash = "sha256:2884e35d1788077db3ff89e763c5ba7bfddbd7ae9108c9bc809e7ba58fa433f5"},
+]
+
+[package.dependencies]
+decorator = ">=4.0.2,<5.0"
+imageio = {version = ">=2.5,<3.0", markers = "python_version >= \"3.4\""}
+imageio_ffmpeg = {version = ">=0.2.0", markers = "python_version >= \"3.4\""}
+numpy = [
+    {version = ">=1.17.3", markers = "python_version != \"2.7\""},
+    {version = "*", markers = "python_version >= \"2.7\""},
+]
+proglog = "<=1.0.0"
+requests = ">=2.8.1,<3.0"
+tqdm = ">=4.11.2,<5.0"
+
+[package.extras]
+doc = ["Sphinx (>=1.5.2,<2.0)", "numpydoc (>=0.6.0,<1.0)", "pygame (>=1.9.3,<2.0)", "sphinx_rtd_theme (>=0.1.10b0,<1.0)"]
+optional = ["matplotlib (>=2.0.0,<3.0)", "opencv-python (>=3.0,<4.0)", "scikit-image (>=0.13.0,<1.0)", "scikit-learn", "scipy (>=0.19.0,<1.5)", "youtube_dl"]
+test = ["coverage (<5.0)", "coveralls (>=1.1,<2.0)", "pytest (>=3.0.0,<4.0)", "pytest-cov (>=2.5.1,<3.0)", "requests (>=2.8.1,<3.0)"]
 
 [[package]]
 name = "numpy"
@@ -1225,6 +1280,21 @@ dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
+name = "proglog"
+version = "0.1.10"
+description = "Log and progress bar manager for console, notebooks, web..."
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "proglog-0.1.10-py3-none-any.whl", hash = "sha256:19d5da037e8c813da480b741e3fa71fb1ac0a5b02bf21c41577c7f327485ec50"},
+    {file = "proglog-0.1.10.tar.gz", hash = "sha256:658c28c9c82e4caeb2f25f488fff9ceace22f8d69b15d0c1c86d64275e4ddab4"},
+]
+
+[package.dependencies]
+tqdm = "*"
+
+[[package]]
 name = "protobuf"
 version = "3.20.3"
 description = "Protocol Buffers"
@@ -1328,23 +1398,6 @@ six = "*"
 
 [package.extras]
 ndimage = ["scipy (>=0.13.3)"]
-
-[[package]]
-name = "pygifsicle"
-version = "1.0.7"
-description = "Python package wrapping the gifsicle library for editing and optimizing gifs."
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "pygifsicle-1.0.7.tar.gz", hash = "sha256:506ae0e4c76992a4fd6097da2d3f224a869ad504879fb1191d6af96c3d394ef8"},
-]
-
-[package.dependencies]
-support_developer = ">=1.0.5"
-
-[package.extras]
-test = ["pytest", "pytest-cov", "touch", "validate_version_code"]
 
 [[package]]
 name = "pygments"
@@ -1670,20 +1723,6 @@ files = [
 ]
 
 [[package]]
-name = "support-developer"
-version = "1.0.5"
-description = "Package designed to centralize messages to support developers development work."
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "support_developer-1.0.5.tar.gz", hash = "sha256:7739f63766b90480ee71d56c70ed8953500c48ab19e2782f867786642fce03d9"},
-]
-
-[package.extras]
-test = ["codacy-coverage", "coveralls", "pytest", "pytest-cov", "validate_version_code"]
-
-[[package]]
 name = "tensorboard"
 version = "2.11.2"
 description = "TensorBoard lets you watch Tensors Flow"
@@ -1790,7 +1829,7 @@ opt-einsum = ["opt-einsum (>=3.3)"]
 name = "tqdm"
 version = "4.64.1"
 description = "Fast, Extensible Progress Meter"
-category = "dev"
+category = "main"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.7"
 files = [
@@ -1996,4 +2035,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.7.1,<3.10"
-content-hash = "4df6cc9a2e20930330a657e1018de6d3ed8d5a4ef96b2e245dd6392cb062ff51"
+content-hash = "f1d81ce6385b2825ba5f84e528b4f1feffdbd29f8097bf8f75851995b4a07f81"
