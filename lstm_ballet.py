@@ -1,5 +1,5 @@
 from gym_balletenv.envs import BalletEnvironment
-from gym_balletenv.wrappers import GrayScaleObservation, RecordVideo, TransposeObservation
+from gym_balletenv.wrappers import GrayScaleObservation, TransposeObservation
 
 import argparse
 import os
@@ -91,7 +91,7 @@ def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
         env = BalletEnvironment(env_id, max_steps)
         if capture_video:
             if idx == 0:
-                env = RecordVideo(env, f"videos/{run_name}")
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         env = GrayScaleObservation(env)
         env = TransposeObservation(env)
         env.action_space.seed(seed)
@@ -423,12 +423,6 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
-        if args.track and args.capture_video:
-            for filename in os.listdir(f"videos/{run_name}"):
-                if filename not in video_filenames and filename.endswith(".gif"):
-                    wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
-                    video_filenames.add(filename)
 
     envs.close()
     writer.close()
