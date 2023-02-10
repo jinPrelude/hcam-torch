@@ -204,7 +204,7 @@ class Agent(nn.Module):
         hidden, _ = self.get_states(x, lstm_state_dict, done)
         return self.critic(hidden)
 
-    def get_action_and_value(self, x, lstm_state_dict, done, action=None):
+    def get_action_and_value(self, x, lstm_state_dict, done, action=None, return_recon=False):
         # encoder and memory
         hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
 
@@ -216,12 +216,14 @@ class Agent(nn.Module):
 
         # critic output
         value = self.critic(hidden)
+        if return_recon:
+            # reconstruct image
+            img_hidden = self.img_decoder_fc(hidden)
+            reconstruct_img = self.img_decoder(img_hidden)
 
-        # reconstruct image
-        img_hidden = self.img_decoder_fc(hidden)
-        reconstruct_img = self.img_decoder(img_hidden)
-
-        return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, reconstruct_img
+            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, reconstruct_img
+        else:
+            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
 if __name__ == "__main__":
@@ -310,7 +312,7 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, next_lstm_state_dict, recon_img = agent.get_action_and_value((next_obs_img, next_obs_lang), next_lstm_state_dict, next_done)
+                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value((next_obs_img, next_obs_lang), next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -379,11 +381,12 @@ if __name__ == "__main__":
                 for key in next_lstm_state_dict.keys():
                     lstm_dict_for_train[key] = (initial_lstm_state_dict[key][0][:, mbenvinds], initial_lstm_state_dict[key][1][:, mbenvinds])
 
-                _, newlogprob, entropy, newvalue, _, newrecon_img = agent.get_action_and_value(
+                _, newlogprob, entropy, newvalue, _, recon_img = agent.get_action_and_value(
                     (b_obs_img[mb_inds], b_obs_lang[mb_inds]),
                     lstm_dict_for_train,
                     b_dones[mb_inds],
                     b_actions.long()[mb_inds],
+                    return_recon=True
                 )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
@@ -421,9 +424,9 @@ if __name__ == "__main__":
                 entropy_loss = entropy.mean()
 
                 # Reconstruction loss
-                newrecon_img = newrecon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
+                recon_img = recon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
                 target_img = b_obs_img[mb_inds].squeeze() / 225.0
-                recon_img_loss = recon_img_celoss(newrecon_img, target_img)
+                recon_img_loss = recon_img_celoss(recon_img, target_img)
 
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * recon_img_loss
 
