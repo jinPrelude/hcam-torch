@@ -261,7 +261,7 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
-    recon_img_loss = nn.CrossEntropyLoss()
+    recon_img_celoss = nn.CrossEntropyLoss()
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -423,7 +423,7 @@ if __name__ == "__main__":
                 # Reconstruction loss
                 newrecon_img = newrecon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
                 target_img = b_obs_img[mb_inds].squeeze() / 225.0
-                recon_img_loss = recon_img_loss(newrecon_img, target_img)
+                recon_img_loss = recon_img_celoss(newrecon_img, target_img)
 
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * recon_img_loss
 
