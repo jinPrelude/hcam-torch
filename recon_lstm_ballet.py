@@ -63,7 +63,7 @@ def parse_args():
         help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=64,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=3,
+    parser.add_argument("--update-epochs", type=int, default=4,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
-    recon_img_celoss = nn.CrossEntropyLoss()
+    recon_img_bceloss = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -426,7 +426,7 @@ if __name__ == "__main__":
                 # Reconstruction loss
                 recon_img = recon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
                 target_img = b_obs_img[mb_inds].squeeze() / 255.0
-                recon_img_loss = recon_img_celoss(recon_img, target_img)
+                recon_img_loss = recon_img_bceloss(recon_img, target_img)
 
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * recon_img_loss
 
