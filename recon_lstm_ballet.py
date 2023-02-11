@@ -148,7 +148,7 @@ class Agent(nn.Module):
         self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
         
-        self.img_decoder_fc = nn.Sequential(
+        self.decoder_fc = nn.Sequential(
             layer_init(nn.Linear(512, 256)),
             nn.ReLU(),
         )
@@ -162,6 +162,9 @@ class Agent(nn.Module):
             nn.ReLU(),
             layer_init(nn.ConvTranspose2d(16, 1, 9, stride=9)),
         )
+
+        self.lang_decoder_lstm = nn.LSTM(256, 14)
+        self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
 
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
@@ -217,11 +220,27 @@ class Agent(nn.Module):
         # critic output
         value = self.critic(hidden)
         if return_recon:
-            # reconstruct image
-            img_hidden = self.img_decoder_fc(hidden)
-            reconstruct_img = self.img_decoder(img_hidden)
+            recon_hidden = self.decoder_fc(hidden)
 
-            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, reconstruct_img
+            # reconstruct image
+            recon_img = self.img_decoder(recon_hidden)
+
+            # reconstruct language
+            batch_size = lstm_state_dict["decoder"][0].shape[1]
+            recon_hidden = recon_hidden.reshape((-1, batch_size, self.lang_decoder_lstm.input_size))
+            recon_lang = []
+            for h, d in zip(recon_hidden, done):
+                h, lstm_state_dict["decoder"] = self.lang_decoder_lstm(
+                    h.unsqueeze(0),
+                    (
+                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][0],
+                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][1],
+                    ),
+                )
+                recon_lang += [h]
+            recon_lang = torch.flatten(torch.cat(recon_lang), 0, 1)
+
+            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, (recon_img, recon_lang)
         else:
             return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
@@ -264,6 +283,7 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     recon_img_bceloss = nn.BCEWithLogitsLoss()
+    recon_lang_celoss = nn.CrossEntropyLoss()
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -282,15 +302,11 @@ if __name__ == "__main__":
     (next_obs_img, next_obs_lang) = envs.reset()[0]
     next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    next_lstm_state_dict = {}
-    next_lstm_state_dict["encoder"] = (
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-    )
-    next_lstm_state_dict["memory"] = (
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-    )
+    next_lstm_state_dict = {
+        "encoder": tuple(torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device) for _ in range(2)),
+        "memory": tuple(torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device) for _ in range(2)),
+        "decoder": tuple(torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device) for _ in range(2)),
+    }
     num_updates = args.total_timesteps // args.batch_size
     video_filenames = set()
 
@@ -381,7 +397,7 @@ if __name__ == "__main__":
                 for key in next_lstm_state_dict.keys():
                     lstm_dict_for_train[key] = (initial_lstm_state_dict[key][0][:, mbenvinds], initial_lstm_state_dict[key][1][:, mbenvinds])
 
-                _, newlogprob, entropy, newvalue, _, recon_img = agent.get_action_and_value(
+                _, newlogprob, entropy, newvalue, _, (recon_img, recon_lang) = agent.get_action_and_value(
                     (b_obs_img[mb_inds], b_obs_lang[mb_inds]),
                     lstm_dict_for_train,
                     b_dones[mb_inds],
@@ -427,8 +443,10 @@ if __name__ == "__main__":
                 recon_img = recon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
                 target_img = b_obs_img[mb_inds].squeeze() / 255.0
                 recon_img_loss = recon_img_bceloss(recon_img, target_img)
+                target_lang = b_obs_lang[mb_inds].long()
+                recon_lang_loss = recon_lang_celoss(recon_lang, target_lang)
 
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * recon_img_loss
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * (recon_img_loss + recon_lang_loss)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -448,6 +466,7 @@ if __name__ == "__main__":
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
         writer.add_scalar("losses/recon_img_loss", recon_img_loss.item(), global_step)
+        writer.add_scalar("losses/recon_lang_loss", recon_lang_loss.item(), global_step)
         writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
         writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
