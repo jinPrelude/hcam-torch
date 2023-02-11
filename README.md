@@ -8,6 +8,7 @@ Implementation of the paper [Towards mental time travel: a hierarchical memory f
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="http://jinprelude.github.io"><img src="https://avatars.githubusercontent.com/u/16518993?v=4?s=100" width="100px;" alt="Euijin Jeong"/><br /><sub><b>Euijin Jeong</b></sub></a><br /><a href="https://github.com/jinPrelude/attention-memory/commits?author=jinPrelude" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Ownfos"><img src="https://avatars.githubusercontent.com/u/39623255?v=4?s=100" width="100px;" alt="Ownfos"/><br /><sub><b>Ownfos</b></sub></a><br /><a href="https://github.com/jinPrelude/attention-memory/commits?author=Ownfos" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
