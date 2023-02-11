@@ -1,5 +1,5 @@
-from cleanrl.pycolab_balletllet import ballet_environment
-from cleanrl.pycolab_ballet.ballet_wrappers import BalletEnv, SyncVectorBalletEnv
+from gym_balletenv.envs import BalletEnvironment
+from gym_balletenv.wrappers import GrayScaleObservation, TransposeObservation
 
 import argparse
 import os
@@ -8,11 +8,10 @@ import time
 from collections import deque
 from distutils.util import strtobool
 
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -32,7 +31,7 @@ def parse_args():
         help="if toggled, cuda will be enabled by default")
     parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="if toggled, this experiment will be tracked with Weights and Biases")
-    parser.add_argument("--wandb-project-name", type=str, default="cleanRL",
+    parser.add_argument("--wandb-project-name", type=str, default="ballet_2delay16",
         help="the wandb's project name")
     parser.add_argument("--wandb-entity", type=str, default=None,
         help="the entity (team) of wandb's project")
@@ -40,36 +39,44 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default='2_delay16',
+    parser.add_argument("--env-id", type=str, default='2_delay16_easy',
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--max-episode-steps", type=int, default=320,
+        help="the max episode step of the environment")
+    parser.add_argument("--total-timesteps", type=int, default=5000000000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+    parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=8,
+    parser.add_argument("--num-envs", type=int, default=192,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=128,
+    parser.add_argument("--num-steps", type=int, default=64,
         help="the number of steps to run in each environment per policy rollout")
-    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument("--gamma", type=float, default=0.99,
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=4,
+    parser.add_argument("--num-lstm-layers", type=int, default=2,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--lstm-hidden-size", type=int, default=512,
+        help="the number of layers(stack) of lstm")
+    parser.add_argument("--num-minibatches", type=int, default=64,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=4,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
-    parser.add_argument("--clip-coef", type=float, default=0.1,
+    parser.add_argument("--clip-coef", type=float, default=0.2,
         help="the surrogate clipping coefficient")
     parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
-    parser.add_argument("--ent-coef", type=float, default=0.01,
+    parser.add_argument("--ent-coef", type=float, default=0.001,
         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
         help="coefficient of the value function")
+    parser.add_argument("--recon-coef", type=float, default=1.,
+        help="coefficient of the reconstruction loss")
     parser.add_argument("--max-grad-norm", type=float, default=0.5,
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
@@ -79,6 +86,21 @@ def parse_args():
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
+
+
+def make_env(env_id, max_steps, seed, idx, capture_video, run_name):
+    def thunk():
+        env = BalletEnvironment(env_id, max_steps)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        env = GrayScaleObservation(env)
+        env = TransposeObservation(env)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+
+    return thunk
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -97,9 +119,12 @@ def lstm_init(lstm):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        # word embedding
+        self.embedding = nn.Embedding(14, 32)
+
         # Encoder block
         self.img_encoder = nn.Sequential(
-            layer_init(nn.Conv2d(3, 16, 9, stride=9)),
+            layer_init(nn.Conv2d(1, 16, 9, stride=9)),
             nn.ReLU(),
             layer_init(nn.Conv2d(16, 32, 3, stride=1)),
             nn.ReLU(),
@@ -109,20 +134,21 @@ class Agent(nn.Module):
             layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lang_encoder_lstm = nn.LSTM(14, 256)
+        self.lang_encoder_lstm = nn.LSTM(32, 256)
         self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
         self.lang_embedding = nn.Sequential(
             layer_init(nn.Linear(256, 32)),
             nn.ReLU(),
         )
         # Memory block
-        self.memory_lstm = nn.LSTM(256+32, 512, 4)
+        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
         self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
-        self.actor = layer_init(nn.Linear(512, 8), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
-        self.img_decoder_fc = nn.Sequential(
+        self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(args.lstm_hidden_size, 1), std=1)
+        
+        self.decoder_fc = nn.Sequential(
             layer_init(nn.Linear(512, 256)),
             nn.ReLU(),
         )
@@ -134,21 +160,18 @@ class Agent(nn.Module):
             nn.ReLU(),
             layer_init(nn.ConvTranspose2d(32, 16, 3, stride=1)),
             nn.ReLU(),
-            layer_init(nn.ConvTranspose2d(16, 3, 9, stride=9)),
-            nn.ReLU(),
+            layer_init(nn.ConvTranspose2d(16, 1, 9, stride=9)),
         )
-        self.lang_decoder_fc = nn.Sequential(
-            layer_init(nn.Linear(512, 256)),
-            nn.ReLU(),
-        )
+
         self.lang_decoder_lstm = nn.LSTM(256, 14)
         self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
-        
+
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        img_hidden = self.img_encoder(x[0])
+        img_hidden = self.img_encoder(x[0] / 255.0)
         batch_size = lstm_state_dict["encoder"][0].shape[1]
-        lang_input = x[1].reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
+        lang_lookup = self.embedding(torch.Tensor.int(x[1]))
+        lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
         lang_hidden = []
         for h, d in zip(lang_input, done):
             h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
@@ -184,7 +207,7 @@ class Agent(nn.Module):
         hidden, _ = self.get_states(x, lstm_state_dict, done)
         return self.critic(hidden)
 
-    def get_action_and_value(self, x, lstm_state_dict, done, action=None):
+    def get_action_and_value(self, x, lstm_state_dict, done, action=None, return_recon=False):
         # encoder and memory
         hidden, lstm_state_dict = self.get_states(x, lstm_state_dict, done)
 
@@ -196,27 +219,30 @@ class Agent(nn.Module):
 
         # critic output
         value = self.critic(hidden)
+        if return_recon:
+            recon_hidden = self.decoder_fc(hidden)
 
-        # reconstruct image
-        test = self.img_decoder_fc(hidden)
-        reconstruct_img = self.img_decoder(test)
+            # reconstruct image
+            recon_img = self.img_decoder(recon_hidden)
 
-        # reconstruct language
-        batch_size = lstm_state_dict["decoder"][0].shape[1]
-        lang_hidden = self.lang_decoder_fc(hidden)
-        lang_hidden = lang_hidden.reshape((-1, batch_size, self.lang_decoder_lstm.input_size))
-        reconstruct_lang = []
-        for h, d in zip(lang_hidden, done):
-            h, lstm_state_dict["decoder"] = self.lang_decoder_lstm(
-                h.unsqueeze(0),
-                (
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][0],
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][1],
-                ),
-            )
-            reconstruct_lang += [h]
-        reconstruct_lang = torch.flatten(torch.cat(reconstruct_lang), 0, 1)
-        return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, reconstruct_img, reconstruct_lang
+            # reconstruct language
+            batch_size = lstm_state_dict["decoder"][0].shape[1]
+            recon_hidden = recon_hidden.reshape((-1, batch_size, self.lang_decoder_lstm.input_size))
+            recon_lang = []
+            for h, d in zip(recon_hidden, done):
+                h, lstm_state_dict["decoder"] = self.lang_decoder_lstm(
+                    h.unsqueeze(0),
+                    (
+                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][0],
+                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][1],
+                    ),
+                )
+                recon_lang += [h]
+            recon_lang = torch.flatten(torch.cat(recon_lang), 0, 1)
+
+            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, (recon_img, recon_lang)
+        else:
+            return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict
 
 
 if __name__ == "__main__":
@@ -231,7 +257,7 @@ if __name__ == "__main__":
             sync_tensorboard=True,
             config=vars(args),
             name=run_name,
-            monitor_gym=True,
+            # monitor_gym=True, # TODO : wandb doesn't support monitor_gym for gymnasium
             save_code=True,
         )
     writer = SummaryWriter(f"runs/{run_name}")
@@ -249,43 +275,40 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = SyncVectorBalletEnv(
-        [BalletEnv(ballet_environment.simple_builder(level_name=args.env_id)) for i in range(args.num_envs)]
-    )
+    envs = gym.vector.AsyncVectorEnv(
+            [make_env(args.env_id, args.max_episode_steps, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+        )
+    envs = gym.wrappers.RecordEpisodeStatistics(envs)
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
+    recon_img_bceloss = nn.BCEWithLogitsLoss()
+    recon_lang_celoss = nn.CrossEntropyLoss(reduction='sum')
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs_img = torch.zeros((args.num_steps, args.num_envs) + (3, 99, 99)).to(device) # (3, 99, 99) for image observation space of ballet
-    obs_lang = torch.zeros((args.num_steps, args.num_envs, 14)).to(device) # 14 for language observation space of ballet
-    actions = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    obs_img = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[0].shape).to(device)
+    obs_lang = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space[1].shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
-    avg_returns = deque(maxlen=20)
+    avg_returns = deque(maxlen=50)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    (next_obs_img, next_obs_lang) = envs.reset()
+    (next_obs_img, next_obs_lang) = envs.reset()[0]
     next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    next_lstm_state_dict = {}
-    next_lstm_state_dict["encoder"] = (
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-    )
-    next_lstm_state_dict["memory"] = (
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-    )
-    next_lstm_state_dict["decoder"] = (
-        torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device),
-        torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device),
-    )  # hidden and cell states (see https://youtu.be/8HyCNIVRbSU)
+    next_lstm_state_dict = {
+        "encoder": tuple(torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device) for _ in range(2)),
+        "memory": tuple(torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device) for _ in range(2)),
+        "decoder": tuple(torch.zeros(agent.lang_decoder_lstm.num_layers, args.num_envs, agent.lang_decoder_lstm.hidden_size).to(device) for _ in range(2)),
+    }
     num_updates = args.total_timesteps // args.batch_size
+    video_filenames = set()
 
     for update in range(1, num_updates + 1):
         initial_lstm_state_dict = {}
@@ -305,25 +328,26 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, next_lstm_state_dict, reconstruct_img, reconstruct_lang = agent.get_action_and_value((next_obs_img, next_obs_lang), next_lstm_state_dict, next_done)
+                action, logprob, _, value, next_lstm_state_dict = agent.get_action_and_value((next_obs_img, next_obs_lang), next_lstm_state_dict, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            (next_obs_img, next_obs_lang), reward, done, info = envs.step(action.cpu().numpy())
+            (next_obs_img, next_obs_lang), reward, done, _, info = envs.step(action.cpu().numpy())
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
             next_done = torch.Tensor(done).to(device)
 
-            for item in info:
-                if "episode" in item.keys():
-                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
-                    avg_returns.append(item['episode']['r'])
-                    writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
-                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
-                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
-                    break
+            if "episode" in info:
+                first_idx = info["_episode"].nonzero()[0][0]
+                r = info["episode"]["r"][first_idx]
+                l = info["episode"]["l"][first_idx]
+                print(f"global_step={global_step}, episodic_return={r}")
+                avg_returns.append(r)
+                writer.add_scalar("charts/avg_episodic_return", np.average(avg_returns), global_step)
+                writer.add_scalar("charts/episodic_return", r, global_step)
+                writer.add_scalar("charts/episodic_length", l, global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -346,10 +370,10 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs_img = obs_img.reshape((-1,) + (3, 99, 99))
-        b_obs_lang = obs_lang.reshape((-1, 14))
+        b_obs_img = obs_img.reshape((-1,) + envs.single_observation_space[0].shape)
+        b_obs_lang = obs_lang.reshape((-1,) + envs.single_observation_space[1].shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape(-1)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
@@ -373,11 +397,12 @@ if __name__ == "__main__":
                 for key in next_lstm_state_dict.keys():
                     lstm_dict_for_train[key] = (initial_lstm_state_dict[key][0][:, mbenvinds], initial_lstm_state_dict[key][1][:, mbenvinds])
 
-                _, newlogprob, entropy, newvalue, _, newreconstruct_img, newreconstruct_lang = agent.get_action_and_value(
+                _, newlogprob, entropy, newvalue, _, (recon_img, recon_lang) = agent.get_action_and_value(
                     (b_obs_img[mb_inds], b_obs_lang[mb_inds]),
                     lstm_dict_for_train,
                     b_dones[mb_inds],
                     b_actions.long()[mb_inds],
+                    return_recon=True
                 )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
@@ -414,11 +439,14 @@ if __name__ == "__main__":
 
                 entropy_loss = entropy.mean()
 
-                # Reconstruction cross entropy loss
-                reconstruct_img_loss = F.cross_entropy(newreconstruct_img, b_obs_img[mb_inds])
-                reconstruct_lang_loss = F.cross_entropy(newreconstruct_lang, b_obs_lang[mb_inds])
+                # Reconstruction loss
+                recon_img = recon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
+                target_img = b_obs_img[mb_inds].squeeze() / 255.0
+                recon_img_loss = recon_img_bceloss(recon_img, target_img)
+                target_lang = b_obs_lang[mb_inds].long()
+                recon_lang_loss = recon_lang_celoss(recon_lang, target_lang)
 
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + reconstruct_img_loss + reconstruct_lang_loss
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * (recon_img_loss + recon_lang_loss)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -437,8 +465,8 @@ if __name__ == "__main__":
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/reconstruct_img_loss", reconstruct_img_loss.item(), global_step)
-        writer.add_scalar("losses/reconstruct_lang_loss", reconstruct_lang_loss.item(), global_step)
+        writer.add_scalar("losses/recon_img_loss", recon_img_loss.item(), global_step)
+        writer.add_scalar("losses/recon_lang_loss", recon_lang_loss.item(), global_step)
         writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
         writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
@@ -446,6 +474,13 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+        # TODO : Remove this code when wandb support gym_monitor for gymnasium.
+        if args.track and args.capture_video:
+            for filename in os.listdir(f"videos/{run_name}"):
+                if filename not in video_filenames and filename.endswith(".mp4"):
+                    wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
+                    video_filenames.add(filename)
 
     envs.close()
     writer.close()
