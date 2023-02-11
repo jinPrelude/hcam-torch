@@ -283,7 +283,7 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     recon_img_bceloss = nn.BCEWithLogitsLoss()
-    recon_lang_celoss = nn.CrossEntropyLoss()
+    recon_lang_celoss = nn.CrossEntropyLoss(reduction='sum')
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
