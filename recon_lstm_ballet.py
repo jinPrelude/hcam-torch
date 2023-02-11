@@ -425,7 +425,7 @@ if __name__ == "__main__":
 
                 # Reconstruction loss
                 recon_img = recon_img.reshape((-1,) + b_obs_img.shape[1:]).squeeze()
-                target_img = b_obs_img[mb_inds].squeeze() / 225.0
+                target_img = b_obs_img[mb_inds].squeeze() / 255.0
                 recon_img_loss = recon_img_celoss(recon_img, target_img)
 
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + args.recon_coef * recon_img_loss
