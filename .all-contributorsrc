@@ -29,6 +29,6 @@
   "skipCi": true,
   "repoType": "github",
   "repoHost": "https://github.com",
-  "projectName": "attention-memory",
+  "projectName": "hcam-torch",
   "projectOwner": "jinPrelude"
 }
