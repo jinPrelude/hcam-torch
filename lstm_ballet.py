@@ -163,7 +163,6 @@ class Agent(nn.Module):
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
         img_hidden = self.img_encoder(x[0] / 255.0)
-        batch_size = lstm_state_dict["encoder"][0].shape[1]
         lang_lookup = self.embedding(torch.Tensor.int(x[1]))
         lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
         lang_hidden, lstm_state_dict["encoder"] = update_lstm(self.lang_encoder_lstm, lang_lookup, done, lstm_state_dict["encoder"])
