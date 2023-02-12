@@ -116,6 +116,20 @@ def lstm_init(lstm):
                 nn.init.orthogonal_(param, 1.0)
     return lstm
 
+def update_lstm(lstm, hidden, done, lstm_state_dict):
+    new_hidden = []
+    for h, d in zip(hidden, done):
+        h, lstm_state_dict = lstm(
+            h.unsqueeze(0),
+            (
+                (1.0 - d).view(1, -1, 1) * lstm_state_dict[0],
+                (1.0 - d).view(1, -1, 1) * lstm_state_dict[1],
+            ),
+        )
+        new_hidden += [h]
+    new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
+    return new_hidden, lstm_state_dict
+
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
@@ -134,15 +148,13 @@ class Agent(nn.Module):
             layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lang_encoder_lstm = nn.LSTM(32, 256)
-        self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
+        self.lang_encoder_lstm = lstm_init(nn.LSTM(32, 256))
         self.lang_embedding = nn.Sequential(
             layer_init(nn.Linear(256, 32)),
             nn.ReLU(),
         )
         # Memory block
-        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
-        self.memory_lstm = lstm_init(self.memory_lstm)
+        self.memory_lstm = lstm_init(nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers))
 
         # Decoder block
         self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
@@ -162,9 +174,7 @@ class Agent(nn.Module):
             nn.ReLU(),
             layer_init(nn.ConvTranspose2d(16, 1, 9, stride=9)),
         )
-
-        self.lang_decoder_lstm = nn.LSTM(256, 14)
-        self.lang_decoder_lstm = lstm_init(self.lang_decoder_lstm)
+        self.lang_decoder_lstm = lstm_init(nn.LSTM(256, 14))
 
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
@@ -172,17 +182,7 @@ class Agent(nn.Module):
         batch_size = lstm_state_dict["encoder"][0].shape[1]
         lang_lookup = self.embedding(torch.Tensor.int(x[1]))
         lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
-        lang_hidden = []
-        for h, d in zip(lang_input, done):
-            h, lstm_state_dict["encoder"] = self.lang_encoder_lstm(
-                h.unsqueeze(0),
-                (
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][0],
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["encoder"][1],
-                ),
-            )
-            lang_hidden += [h]
-        lang_hidden = torch.flatten(torch.cat(lang_hidden), 0, 1)
+        lang_hidden, lstm_state_dict["encoder"] = update_lstm(self.lang_encoder_lstm, lang_input, done, lstm_state_dict["encoder"])
         lang_hidden = self.lang_embedding(lang_hidden)
         hidden = torch.cat([img_hidden, lang_hidden], 1)
 
@@ -190,18 +190,8 @@ class Agent(nn.Module):
         batch_size = lstm_state_dict["memory"][0].shape[1]
         hidden = hidden.reshape((-1, batch_size, self.memory_lstm.input_size))
         done = done.reshape((-1, batch_size))
-        new_hidden = []
-        for h, d in zip(hidden, done):
-            h, lstm_state_dict["memory"] = self.memory_lstm(
-                h.unsqueeze(0),
-                (
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][0],
-                    (1.0 - d).view(1, -1, 1) * lstm_state_dict["memory"][1],
-                ),
-            )
-            new_hidden += [h]
-        new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
-        return new_hidden, lstm_state_dict
+        hidden, lstm_state_dict["memory"] = update_lstm(self.memory_lstm, hidden, done, lstm_state_dict["memory"])
+        return hidden, lstm_state_dict
 
     def get_value(self, x, lstm_state_dict, done):
         hidden, _ = self.get_states(x, lstm_state_dict, done)
@@ -228,18 +218,7 @@ class Agent(nn.Module):
             # reconstruct language
             batch_size = lstm_state_dict["decoder"][0].shape[1]
             recon_hidden = recon_hidden.reshape((-1, batch_size, self.lang_decoder_lstm.input_size))
-            recon_lang = []
-            for h, d in zip(recon_hidden, done):
-                h, lstm_state_dict["decoder"] = self.lang_decoder_lstm(
-                    h.unsqueeze(0),
-                    (
-                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][0],
-                        (1.0 - d).view(1, -1, 1) * lstm_state_dict["decoder"][1],
-                    ),
-                )
-                recon_lang += [h]
-            recon_lang = torch.flatten(torch.cat(recon_lang), 0, 1)
-
+            recon_lang, lstm_state_dict["decoder"] = update_lstm(self.lang_decoder_lstm, recon_hidden, done, lstm_state_dict["decoder"])
             return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict, (recon_img, recon_lang)
         else:
             return action, probs.log_prob(action), probs.entropy(), value, lstm_state_dict

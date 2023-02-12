@@ -146,13 +146,15 @@ class Agent(nn.Module):
             layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lang_encoder_lstm = lstm_init(nn.LSTM(32, 256))
+        self.lang_encoder_lstm = nn.LSTM(32, 256)
+        self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
         self.lang_embedding = nn.Sequential(
             layer_init(nn.Linear(256, 32)),
             nn.ReLU(),
         )
         # Memory block
-        self.memory_lstm = lstm_init(nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers))
+        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
+        self.memory_lstm = lstm_init(self.memory_lstm)
 
         # Decoder block
         self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
@@ -160,8 +162,8 @@ class Agent(nn.Module):
         
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
-        batch_size = lstm_state_dict["encoder"][0].shape[1]
         img_hidden = self.img_encoder(x[0] / 255.0)
+        batch_size = lstm_state_dict["encoder"][0].shape[1]
         lang_lookup = self.embedding(torch.Tensor.int(x[1]))
         lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
         lang_hidden, lstm_state_dict["encoder"] = update_lstm(self.lang_encoder_lstm, lang_input, done, lstm_state_dict["encoder"])
@@ -250,15 +252,10 @@ if __name__ == "__main__":
     (next_obs_img, next_obs_lang) = envs.reset()[0]
     next_obs_img, next_obs_lang = torch.Tensor(next_obs_img).to(device), torch.Tensor(next_obs_lang).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    next_lstm_state_dict = {}
-    next_lstm_state_dict["encoder"] = (
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-        torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device),
-    )
-    next_lstm_state_dict["memory"] = (
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-        torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device),
-    )
+    next_lstm_state_dict = {
+        "encoder": tuple(torch.zeros(agent.lang_encoder_lstm.num_layers, args.num_envs, agent.lang_encoder_lstm.hidden_size).to(device) for _ in range(2)),
+        "memory": tuple(torch.zeros(agent.memory_lstm.num_layers, args.num_envs, agent.memory_lstm.hidden_size).to(device) for _ in range(2)),
+    }
     num_updates = args.total_timesteps // args.batch_size
     video_filenames = set()
 
