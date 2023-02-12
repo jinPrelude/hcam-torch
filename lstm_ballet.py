@@ -117,7 +117,7 @@ def lstm_init(lstm):
 def update_lstm(lstm, hidden, done, lstm_state_dict):
     new_hidden = []
     for h, d in zip(hidden, done):
-        h, lstm_state_dict = self.lang_encoder_lstm(
+        h, lstm_state_dict = lstm(
             h.unsqueeze(0),
             (
                 (1.0 - d).view(1, -1, 1) * lstm_state_dict[0],
@@ -162,10 +162,11 @@ class Agent(nn.Module):
         
     def get_states(self, x, lstm_state_dict, done):
         # Encoder logic
+        batch_size = lstm_state_dict["encoder"][0].shape[1]
         img_hidden = self.img_encoder(x[0] / 255.0)
         lang_lookup = self.embedding(torch.Tensor.int(x[1]))
         lang_input = lang_lookup.reshape((-1, batch_size, self.lang_encoder_lstm.input_size))
-        lang_hidden, lstm_state_dict["encoder"] = update_lstm(self.lang_encoder_lstm, lang_lookup, done, lstm_state_dict["encoder"])
+        lang_hidden, lstm_state_dict["encoder"] = update_lstm(self.lang_encoder_lstm, lang_input, done, lstm_state_dict["encoder"])
         lang_hidden = self.lang_embedding(lang_hidden)
         hidden = torch.cat([img_hidden, lang_hidden], 1)
 
