@@ -146,15 +146,13 @@ class Agent(nn.Module):
             layer_init(nn.Linear(32 * 7 * 7, 256)),
             nn.ReLU(),
         )
-        self.lang_encoder_lstm = nn.LSTM(32, 256)
-        self.lang_encoder_lstm = lstm_init(self.lang_encoder_lstm)
+        self.lang_encoder_lstm = lstm_init(nn.LSTM(32, 256))
         self.lang_embedding = nn.Sequential(
             layer_init(nn.Linear(256, 32)),
             nn.ReLU(),
         )
         # Memory block
-        self.memory_lstm = nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers)
-        self.memory_lstm = lstm_init(self.memory_lstm)
+        self.memory_lstm = lstm_init(nn.LSTM(256+32, args.lstm_hidden_size, args.num_lstm_layers))
 
         # Decoder block
         self.actor = layer_init(nn.Linear(args.lstm_hidden_size, envs.single_action_space.n), std=0.01)
