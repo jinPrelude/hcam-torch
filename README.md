@@ -1,4 +1,4 @@
-# attention-memory
+# hcam-torch
 Implementation of the paper [Towards mental time travel: a hierarchical memory for reinforcement learning agents](https://arxiv.org/abs/2105.14039) using [CleanRL](https://github.com/vwxyzjn/cleanrl/commit/94a44b5a252c432e3c47577fa46ed49c230fcce3).
 ## Contributors
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
@@ -7,8 +7,8 @@ Implementation of the paper [Towards mental time travel: a hierarchical memory f
 <table>
   <tbody>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="http://jinprelude.github.io"><img src="https://avatars.githubusercontent.com/u/16518993?v=4?s=100" width="100px;" alt="Euijin Jeong"/><br /><sub><b>Euijin Jeong</b></sub></a><br /><a href="https://github.com/jinPrelude/attention-memory/commits?author=jinPrelude" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Ownfos"><img src="https://avatars.githubusercontent.com/u/39623255?v=4?s=100" width="100px;" alt="Ownfos"/><br /><sub><b>Ownfos</b></sub></a><br /><a href="https://github.com/jinPrelude/attention-memory/commits?author=Ownfos" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://jinprelude.github.io"><img src="https://avatars.githubusercontent.com/u/16518993?v=4?s=100" width="100px;" alt="Euijin Jeong"/><br /><sub><b>Euijin Jeong</b></sub></a><br /><a href="https://github.com/jinPrelude/hcam-torch/commits?author=jinPrelude" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Ownfos"><img src="https://avatars.githubusercontent.com/u/39623255?v=4?s=100" width="100px;" alt="Ownfos"/><br /><sub><b>Ownfos</b></sub></a><br /><a href="https://github.com/jinPrelude/hcam-torch/commits?author=Ownfos" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -21,7 +21,7 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 
 ## Progress
 - [x] [gym-style BalletEnv reimplementation](https://github.com/jinPrelude/gym-balletenv)
-- [x] [LSTM Agent](https://github.com/jinPrelude/attention-memory/blob/gymnasium/lstm_ballet.py)
+- [x] [LSTM Agent](https://github.com/jinPrelude/hcam-torch/blob/gymnasium/lstm_ballet.py)
 - [ ] TrXL Agent
 - [ ] HCAM Agent
 
@@ -30,14 +30,14 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 # Get Started
 We recommand to use Anaconda(or Miniconda) to run in virtual environment.
 ```bash
-conda create -n attention-memory python=3.9 -y
-conda activate attention-memory
+conda create -n hcam python=3.9 -y
+conda activate hcam
 ```
 
 Clone the repo:
 ```bash
-git clone https://github.com/jinPrelude/attention-memory.git
-cd attention-memory
+git clone https://github.com/jinPrelude/hcam-torch.git
+cd hcam-torch
 ```
 
 Install poetry and run `poetry install`. This will install all dependencies we need.
