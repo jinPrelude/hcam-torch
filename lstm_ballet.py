@@ -31,7 +31,7 @@ def parse_args():
         help="if toggled, cuda will be enabled by default")
     parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="if toggled, this experiment will be tracked with Weights and Biases")
-    parser.add_argument("--wandb-project-name", type=str, default="ballet_2delay16",
+    parser.add_argument("--wandb-project-name", type=str, default="ballet_2delay2",
         help="the wandb's project name")
     parser.add_argument("--wandb-entity", type=str, default=None,
         help="the entity (team) of wandb's project")
@@ -39,11 +39,11 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default='2_delay16_easy',
+    parser.add_argument("--env-id", type=str, default='2_delay2_easy',
         help="the id of the environment")
-    parser.add_argument("--max-episode-steps", type=int, default=320,
+    parser.add_argument("--max-episode-steps", type=int, default=240,
         help="the max episode step of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=5000000000,
+    parser.add_argument("--total-timesteps", type=int, default=4000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
@@ -63,7 +63,7 @@ def parse_args():
         help="the number of layers(stack) of lstm")
     parser.add_argument("--num-minibatches", type=int, default=64,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=3,
+    parser.add_argument("--update-epochs", type=int, default=4,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
