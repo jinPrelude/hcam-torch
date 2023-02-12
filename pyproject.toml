@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "attention-memory"
+name = "hcam-torch"
 version = "0.0.1"
-description = ""
+description = "Implementation of the paper Towards mental time travel: a hierarchical memory for reinforcement learning agents using CleanRL."
 authors = ["Euijin Jeong <jin.Prelude@gmail.com>"]
 license="MIT"
 readme = "README.md"
