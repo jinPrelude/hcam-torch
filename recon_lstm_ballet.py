@@ -43,9 +43,9 @@ def parse_args():
         help="the id of the environment")
     parser.add_argument("--max-episode-steps", type=int, default=240,
         help="the max episode step of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=6000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=2e-4,
+    parser.add_argument("--learning-rate", type=float, default=4e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--num-envs", type=int, default=192,
         help="the number of parallel game environments")
@@ -61,9 +61,9 @@ def parse_args():
         help="the number of layers(stack) of lstm")
     parser.add_argument("--lstm-hidden-size", type=int, default=512,
         help="the number of layers(stack) of lstm")
-    parser.add_argument("--num-minibatches", type=int, default=64,
+    parser.add_argument("--num-minibatches", type=int, default=2,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=4,
+    parser.add_argument("--update-epochs", type=int, default=10,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -460,6 +460,9 @@ if __name__ == "__main__":
                 if filename not in video_filenames and filename.endswith(".mp4"):
                     wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
                     video_filenames.add(filename)
+                    
+        if np.average(avg_returns) > 0.95:
+            break
 
     envs.close()
     writer.close()
