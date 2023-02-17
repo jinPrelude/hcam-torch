@@ -1,24 +1,19 @@
-program: ballet_lstm_lang_fc.py
-method: bayes
+program: lstm_ballet.py
+method: grid
 metric: 
-  name: charts/avg_episodic_return
-  goal: maximize
+  name: Runtime
+  goal: minitize
 parameters:
   env-id:
     value: '2_delay2'
   num-minibatches:
-    values: [6, 12]
+    values: [1, 2, 3, 6]
   update-epochs:
-    values: [2, 4]
-  clip-coef:
-    values: [0.2, 0.3]
-  max-grad-norm:
-    values: [0.1, 0.3, 0.4]
+    values: [3, 6, 10, 20, 30]
+
   total-timesteps:
-    value: 5000000
-  num-lstm-layers:
-    values: [1, 2]
-  num-steps:
-    values: [16, 32, 64]
+    value: 2300000
   track:
     value: True
+  wandb-project:
+    2_delay2-fix-minibatches
