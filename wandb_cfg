@@ -13,4 +13,4 @@ parameters:
   track:
     value: True
   wandb-project-name:
-    2_delay2_easy-fix-minibatches
+    value: 2_delay2_easy-fix-minibatches
