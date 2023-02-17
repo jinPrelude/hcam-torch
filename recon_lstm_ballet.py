@@ -465,7 +465,7 @@ if __name__ == "__main__":
         if np.average(avg_returns) >= 0.95:
             break
         elapsed_time = time.time() - start_time
-        if elapsed_time > 2400:  # 2400 seconds = 40 minutes
+        if elapsed_time > 1800:  # 1800 seconds = 30 minutes
             break
 
     envs.close()
