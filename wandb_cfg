@@ -1,5 +1,8 @@
 program: lstm_ballet.py
-method: grid
+method: bayes
+metric:
+  name: charts/avg_episodic_return
+  goal: maximize
 parameters:
   env-id:
     value: '2_delay2_easy'
