@@ -418,5 +418,8 @@ if __name__ == "__main__":
                     wandb.log({f"videos": wandb.Video(f"videos/{run_name}/{filename}")})
                     video_filenames.add(filename)
 
+        if np.average(avg_returns) >= 0.95:
+            break
+
     envs.close()
     writer.close()
