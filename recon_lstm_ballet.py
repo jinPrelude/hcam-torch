@@ -261,6 +261,7 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
+    agent = torch.compile(agent, mode="max-autotune")
     recon_img_bceloss = nn.BCEWithLogitsLoss()
     recon_lang_celoss = nn.CrossEntropyLoss(reduction='sum')
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
