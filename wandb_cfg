@@ -1,11 +1,8 @@
 program: lstm_ballet.py
 method: grid
-metric: 
-  name: Runtime
-  goal: minitize
 parameters:
   env-id:
-    value: '2_delay2'
+    value: '2_delay2_easy'
   num-minibatches:
     values: [1, 2, 3, 6]
   update-epochs:
@@ -16,4 +13,4 @@ parameters:
   track:
     value: True
   wandb-project:
-    2_delay2-fix-minibatches
+    2_delay2_easy-fix-minibatches
