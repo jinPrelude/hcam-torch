@@ -43,7 +43,7 @@ def parse_args():
         help="the id of the environment")
     parser.add_argument("--max-episode-steps", type=int, default=240,
         help="the max episode step of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=6000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2e-4,
         help="the learning rate of the optimizer")
@@ -463,6 +463,9 @@ if __name__ == "__main__":
                     video_filenames.add(filename)
 
         if np.average(avg_returns) >= 0.95:
+            break
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 3000:  # 2400 seconds = 40 minutes
             break
 
     envs.close()

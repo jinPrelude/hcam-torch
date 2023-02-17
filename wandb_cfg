@@ -9,8 +9,6 @@ parameters:
     values: [3, 6, 10, 20, 30]
   learning-rate:
     values: [0.0001, 0.0002, 0.0004]
-  total-timesteps:
-    value: 2300000
   track:
     value: True
   wandb-project-name:
