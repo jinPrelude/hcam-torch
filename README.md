@@ -21,16 +21,18 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 
 ## Progress
 - [x] [gym-style BalletEnv reimplementation](https://github.com/jinPrelude/gym-balletenv)
-- [x] [LSTM Agent](https://github.com/jinPrelude/hcam-torch/blob/gymnasium/lstm_ballet.py)
+- [x] [LSTM Agent (+ reconstruct)](https://github.com/jinPrelude/hcam-torch/blob/gymnasium/lstm_ballet.py)
 - [ ] TrXL Agent
 - [ ] HCAM Agent
 
 
 
 # Get Started
+We tested on Python 3.10.
+
 We recommand to use Anaconda(or Miniconda) to run in virtual environment.
 ```bash
-conda create -n hcam python=3.9 -y
+conda create -n hcam python=3.10 -y
 conda activate hcam
 ```
 
@@ -42,7 +44,6 @@ cd hcam-torch
 
 Install poetry and run `poetry install`. This will install all dependencies we need.
 ```bash
-
 pip install poetry && poetry install
 ```
 
