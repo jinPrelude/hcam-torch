@@ -512,13 +512,13 @@ absl-py = "*"
 gymnasium = "0.27.1"
 moviepy = "*"
 opencv-python = "*"
-pycolab = "1.2"
+pycolab = {git = "https://github.com/deepmind/pycolab.git"}
 
 [package.source]
 type = "git"
 url = "https://github.com/jinPrelude/gym-balletenv.git"
 reference = "HEAD"
-resolved_reference = "a7b7da2f149910435278931ed41ed3923d30dcf7"
+resolved_reference = "ff5eeeed52e3968652928632c360cea10deecbed"
 
 [[package]]
 name = "gym-notices"
@@ -1132,13 +1132,11 @@ pyasn1 = ">=0.4.6,<0.6.0"
 [[package]]
 name = "pycolab"
 version = "1.2"
-description = "An engine for small games for reinforcement learning agents."
+description = ""
 optional = false
 python-versions = "*"
-files = [
-    {file = "pycolab-1.2-py3-none-any.whl", hash = "sha256:a8577a5bc8135358da5f07f1a1e51c7716647481cd59d46ec20f4df6e65689a7"},
-    {file = "pycolab-1.2.tar.gz", hash = "sha256:18e9e006040d77ec9fc414b3ae35e0d712010046c3d00005d8ff4094b3d88010"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 numpy = ">=1.9"
@@ -1146,6 +1144,12 @@ six = "*"
 
 [package.extras]
 ndimage = ["scipy (>=0.13.3)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/deepmind/pycolab.git"
+reference = "HEAD"
+resolved_reference = "6504c8065dd5322438f23a2a9026649904f3322a"
 
 [[package]]
 name = "pytest"
