@@ -499,7 +499,7 @@ testing = ["box2d-py (==2.3.5)", "imageio (>=2.14.1)", "lz4 (>=3.1.0)", "matplot
 toy-text = ["pygame (==2.1.0)"]
 
 [[package]]
-name = "gym_balletenv"
+name = "gym-balletenv"
 version = "0.0.2"
 description = ""
 optional = false
@@ -1132,7 +1132,7 @@ pyasn1 = ">=0.4.6,<0.6.0"
 [[package]]
 name = "pycolab"
 version = "1.2"
-description = ""
+description = "An engine for small games for reinforcement learning agents."
 optional = false
 python-versions = "*"
 files = []
@@ -1263,12 +1263,13 @@ rsa = ["oauthlib[signedtoken] (>=3.0.0)"]
 
 [[package]]
 name = "rsa"
-version = "4.2"
+version = "4.9"
 description = "Pure-Python RSA implementation"
 optional = false
-python-versions = "*"
+python-versions = ">=3.6,<4"
 files = [
-    {file = "rsa-4.2.tar.gz", hash = "sha256:aaefa4b84752e3e99bd8333a2e1e3e7a7da64614042bd66f775573424370108a"},
+    {file = "rsa-4.9-py3-none-any.whl", hash = "sha256:90260d9058e514786967344d0ef75fa8727eed8a7d2e43ce9f4bcf1b536174f7"},
+    {file = "rsa-4.9.tar.gz", hash = "sha256:e38464a49c6c85d7f1351b0126661487a7e0a14a50f1675ec50eb34d4f20ef21"},
 ]
 
 [package.dependencies]
@@ -1598,18 +1599,18 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
 name = "wandb"
-version = "0.13.11"
+version = "0.15.5"
 description = "A CLI and library for interacting with the Weights and Biases API."
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "wandb-0.13.11-py3-none-any.whl", hash = "sha256:e584ac7fb0097fba8a030d5aedc5fea157286aba69a2e6e6e689b794155fcc8f"},
-    {file = "wandb-0.13.11.tar.gz", hash = "sha256:f2b065d1c732e8e1828fabe720dc82f12e6109d0d2bbfbcccc17eaefae0fd7c9"},
+    {file = "wandb-0.15.5-py3-none-any.whl", hash = "sha256:8cfb8fdaaf0a35b636d0ca2c2c1262b0e3d835ac37f70fc3094b618f55f63f01"},
+    {file = "wandb-0.15.5.tar.gz", hash = "sha256:40c1d9ae501194bff408bc9c555865ffcccf08d2d65dd413547df0c17ed20cb5"},
 ]
 
 [package.dependencies]
 appdirs = ">=1.4.3"
-Click = ">=7.0,<8.0.0 || >8.0.0"
+Click = ">=7.1,<8.0.0 || >8.0.0"
 docker-pycreds = ">=0.4.0"
 GitPython = ">=1.0.0,<3.1.29 || >3.1.29"
 pathtools = "*"
@@ -1622,12 +1623,13 @@ setproctitle = "*"
 setuptools = "*"
 
 [package.extras]
+async = ["httpx (>=0.22.0)"]
 aws = ["boto3"]
-azure = ["azure-storage-blob"]
+azure = ["azure-identity", "azure-storage-blob"]
 gcp = ["google-cloud-storage"]
 grpc = ["grpcio (>=1.27.2)"]
 kubeflow = ["google-cloud-storage", "kubernetes", "minio", "sh"]
-launch = ["awscli", "boto3", "botocore", "chardet", "google-auth", "google-cloud-artifact-registry", "google-cloud-compute", "google-cloud-storage", "iso8601", "kubernetes", "nbconvert", "nbformat", "typing-extensions"]
+launch = ["awscli", "azure-containerregistry", "azure-identity", "azure-storage-blob", "boto3", "botocore", "chardet", "google-auth", "google-cloud-artifact-registry", "google-cloud-compute", "google-cloud-storage", "iso8601", "kubernetes", "nbconvert", "nbformat", "optuna", "typing-extensions"]
 media = ["bokeh", "moviepy", "numpy", "pillow", "plotly", "rdkit-pypi", "soundfile"]
 models = ["cloudpickle"]
 sweeps = ["sweeps (>=0.2.0)"]
@@ -1665,5 +1667,5 @@ test = ["pytest (>=6.0.0)"]
 
 [metadata]
 lock-version = "2.0"
-python-versions = ">=3.10"
-content-hash = "86a56f3ae65a1c5287842ec5d523f629761abde54a35506fd8078931516acc8f"
+python-versions = "^3.10"
+content-hash = "aadd1d110b446296d668f7cc21b08baefa1bc848af2eccd338f7eacc30d9ccaf"
