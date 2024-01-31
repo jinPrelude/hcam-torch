@@ -8,9 +8,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-tensorboard = "^2.13.0"
+tensorboard = "^2.15.1"
 wandb = "^0.15.5"
-torch = "^2.0.1"
+torch = "^2.2.0"
 gymnasium = "^0.27.1"
 gym-balletenv = {git = "https://github.com/jinPrelude/gym-balletenv.git"}
 
